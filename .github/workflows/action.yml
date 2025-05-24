@@ -1,0 +1,100 @@
+name: Automatic Tile Generation and Release - German States
+on:
+  workflow_dispatch:
+  
+jobs:
+  generate_tiles:
+    runs-on: tilemaker
+    container: ghcr.io/gis-ops/docker-valhalla/valhalla:latest
+    strategy:
+      matrix:
+        state:
+          - { name: "baden-wuerttemberg", url: "https://download.geofabrik.de/europe/germany/baden-wuerttemberg-latest.osm.pbf" }
+          - { name: "bayern", url: "https://download.geofabrik.de/europe/germany/bayern-latest.osm.pbf" }
+          - { name: "berlin", url: "https://download.geofabrik.de/europe/germany/berlin-latest.osm.pbf" }
+          - { name: "brandenburg", url: "https://download.geofabrik.de/europe/germany/brandenburg-latest.osm.pbf" }
+          - { name: "bremen", url: "https://download.geofabrik.de/europe/germany/bremen-latest.osm.pbf" }
+          - { name: "hamburg", url: "https://download.geofabrik.de/europe/germany/hamburg-latest.osm.pbf" }
+          - { name: "hessen", url: "https://download.geofabrik.de/europe/germany/hessen-latest.osm.pbf" }
+          - { name: "mecklenburg-vorpommern", url: "https://download.geofabrik.de/europe/germany/mecklenburg-vorpommern-latest.osm.pbf" }
+          - { name: "niedersachsen", url: "https://download.geofabrik.de/europe/germany/niedersachsen-latest.osm.pbf" }
+          - { name: "nordrhein-westfalen", url: "https://download.geofabrik.de/europe/germany/nordrhein-westfalen-latest.osm.pbf" }
+          - { name: "rheinland-pfalz", url: "https://download.geofabrik.de/europe/germany/rheinland-pfalz-latest.osm.pbf" }
+          - { name: "saarland", url: "https://download.geofabrik.de/europe/germany/saarland-latest.osm.pbf" }
+          - { name: "sachsen", url: "https://download.geofabrik.de/europe/germany/sachsen-latest.osm.pbf" }
+          - { name: "sachsen-anhalt", url: "https://download.geofabrik.de/europe/germany/sachsen-anhalt-latest.osm.pbf" }
+          - { name: "schleswig-holstein", url: "https://download.geofabrik.de/europe/germany/schleswig-holstein-latest.osm.pbf" }
+          - { name: "thueringen", url: "https://download.geofabrik.de/europe/germany/thueringen-latest.osm.pbf" }
+    steps:
+    
+    - name: Download Dependencies
+      run: sudo apt install wget -y
+    
+    - name: Download OSM PBF for ${{ matrix.state.name }}
+      run: |
+        echo "Downloading ${{ matrix.state.name }} PBF file..."
+        sudo wget -q ${{ matrix.state.url }}
+        echo "Download completed for ${{ matrix.state.name }}"
+        ls -la *.osm.pbf
+      
+    - name: Mjolnir Build for ${{ matrix.state.name }}
+      run: |
+        echo "Building Valhalla configuration for ${{ matrix.state.name }}..."
+        sudo valhalla_build_config | sudo tee -a valhalla.json
+        
+        echo "Building tiles for ${{ matrix.state.name }}..."
+        sudo valhalla_build_tiles -c valhalla.json ${{ matrix.state.name }}-latest.osm.pbf
+        
+        echo "Building extract for ${{ matrix.state.name }}..."
+        sudo valhalla_build_extract -c valhalla.json
+        
+        echo "Creating tarball for ${{ matrix.state.name }}..."
+        sudo mv /data/valhalla/tiles.tar /data/valhalla/valhalla_tiles_${{ matrix.state.name }}.tar
+        
+        echo "Tile generation completed for ${{ matrix.state.name }}"
+        ls -la /data/valhalla/
+        
+    - name: Upload Build Artifact for ${{ matrix.state.name }}
+      uses: actions/upload-artifact@v3
+      with:
+        name: valhalla_tiles_${{ matrix.state.name }}
+        path: /data/valhalla/valhalla_tiles_${{ matrix.state.name }}.tar
+        
+  release:
+    needs: generate_tiles
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download All Build Artifacts
+        uses: actions/download-artifact@v3
+        with:
+          path: ~/artifacts
+          
+      - name: List All Artifacts
+        run: |
+          echo "Listing all downloaded artifacts:"
+          find ~/artifacts -name "*.tar" -type f
+          
+      - name: Create Automatic Release
+        uses: marvinpinto/action-automatic-releases@latest
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          prerelease: false
+          automatic_release_tag: latest
+          title: "Valhalla Tiles - German States (Individual Packages)"
+          files: |
+            ~/artifacts/valhalla_tiles_baden-wuerttemberg/valhalla_tiles_baden-wuerttemberg.tar
+            ~/artifacts/valhalla_tiles_bayern/valhalla_tiles_bayern.tar
+            ~/artifacts/valhalla_tiles_berlin/valhalla_tiles_berlin.tar
+            ~/artifacts/valhalla_tiles_brandenburg/valhalla_tiles_brandenburg.tar
+            ~/artifacts/valhalla_tiles_bremen/valhalla_tiles_bremen.tar
+            ~/artifacts/valhalla_tiles_hamburg/valhalla_tiles_hamburg.tar
+            ~/artifacts/valhalla_tiles_hessen/valhalla_tiles_hessen.tar
+            ~/artifacts/valhalla_tiles_mecklenburg-vorpommern/valhalla_tiles_mecklenburg-vorpommern.tar
+            ~/artifacts/valhalla_tiles_niedersachsen/valhalla_tiles_niedersachsen.tar
+            ~/artifacts/valhalla_tiles_nordrhein-westfalen/valhalla_tiles_nordrhein-westfalen.tar
+            ~/artifacts/valhalla_tiles_rheinland-pfalz/valhalla_tiles_rheinland-pfalz.tar
+            ~/artifacts/valhalla_tiles_saarland/valhalla_tiles_saarland.tar
+            ~/artifacts/valhalla_tiles_sachsen/valhalla_tiles_sachsen.tar
+            ~/artifacts/valhalla_tiles_sachsen-anhalt/valhalla_tiles_sachsen-anhalt.tar
+            ~/artifacts/valhalla_tiles_schleswig-holstein/valhalla_tiles_schleswig-holstein.tar
+            ~/artifacts/valhalla_tiles_thueringen/valhalla_tiles_thueringen.tar
