@@ -55,7 +55,7 @@ jobs:
         ls -la /data/valhalla/
         
     - name: Upload Build Artifact for ${{ matrix.state.name }}
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: valhalla_tiles_${{ matrix.state.name }}
         path: /data/valhalla/valhalla_tiles_${{ matrix.state.name }}.tar
