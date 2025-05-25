@@ -6,7 +6,6 @@ jobs:
   generate_tiles:
     runs-on: tilemaker
     container: ghcr.io/gis-ops/docker-valhalla/valhalla:latest
-    options: --user root
     strategy:
       matrix:
         state:
@@ -51,6 +50,10 @@ jobs:
         
         echo "Creating tarball for ${{ matrix.state.name }}..."
         sudo mv /data/valhalla/tiles.tar /data/valhalla/valhalla_tiles_${{ matrix.state.name }}.tar
+
+        echo "Fixing permissions for artifact upload..."
+        sudo chown $(id -u):$(id -g) /data/valhalla/valhalla_tiles_${{ matrix.state.name }}.tar
+        sudo chmod 644 /data/valhalla/valhalla_tiles_${{ matrix.state.name }}.tar
         
         echo "Tile generation completed for ${{ matrix.state.name }}"
         ls -la /data/valhalla/
@@ -63,7 +66,7 @@ jobs:
         
   release:
     needs: generate_tiles
-    runs-on: ubuntu-latest
+    runs-on: tilemaker
     steps:
       - name: Download All Build Artifacts
         uses: actions/download-artifact@v3
