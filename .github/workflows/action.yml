@@ -6,6 +6,7 @@ jobs:
   generate_tiles:
     runs-on: tilemaker
     container: ghcr.io/gis-ops/docker-valhalla/valhalla:latest
+    options: --user root
     strategy:
       matrix:
         state:
