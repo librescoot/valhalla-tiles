@@ -88,12 +88,12 @@ jobs:
       - name: Download All Build Artifacts
         uses: actions/download-artifact@v4
         with:
-          path: ~/artifacts
+          path: artifacts
           
       - name: List All Artifacts
         run: |
           echo "Listing all downloaded artifacts:"
-          find ~/artifacts -name "*.tar" -type f
+          find artifacts -name "*.tar" -type f
           
       - name: Create Automatic Release
         uses: marvinpinto/action-automatic-releases@latest
@@ -103,19 +103,4 @@ jobs:
           automatic_release_tag: latest
           title: "Valhalla Tiles - German States (Individual Packages)"
           files: |
-            ~/artifacts/valhalla_tiles_baden-wuerttemberg/valhalla_tiles_baden-wuerttemberg.tar
-            ~/artifacts/valhalla_tiles_bayern/valhalla_tiles_bayern.tar
-            ~/artifacts/valhalla_tiles_berlin/valhalla_tiles_berlin.tar
-            ~/artifacts/valhalla_tiles_brandenburg/valhalla_tiles_brandenburg.tar
-            ~/artifacts/valhalla_tiles_bremen/valhalla_tiles_bremen.tar
-            ~/artifacts/valhalla_tiles_hamburg/valhalla_tiles_hamburg.tar
-            ~/artifacts/valhalla_tiles_hessen/valhalla_tiles_hessen.tar
-            ~/artifacts/valhalla_tiles_mecklenburg-vorpommern/valhalla_tiles_mecklenburg-vorpommern.tar
-            ~/artifacts/valhalla_tiles_niedersachsen/valhalla_tiles_niedersachsen.tar
-            ~/artifacts/valhalla_tiles_nordrhein-westfalen/valhalla_tiles_nordrhein-westfalen.tar
-            ~/artifacts/valhalla_tiles_rheinland-pfalz/valhalla_tiles_rheinland-pfalz.tar
-            ~/artifacts/valhalla_tiles_saarland/valhalla_tiles_saarland.tar
-            ~/artifacts/valhalla_tiles_sachsen/valhalla_tiles_sachsen.tar
-            ~/artifacts/valhalla_tiles_sachsen-anhalt/valhalla_tiles_sachsen-anhalt.tar
-            ~/artifacts/valhalla_tiles_schleswig-holstein/valhalla_tiles_schleswig-holstein.tar
-            ~/artifacts/valhalla_tiles_thueringen/valhalla_tiles_thueringen.tar
+            artifacts/**/*
