@@ -5,8 +5,9 @@ on:
 jobs:
   generate_tiles:
     runs-on: tilemaker
-    container: ghcr.io/gis-ops/docker-valhalla/valhalla:latest
-    options: --privileged --cgroupns host --user root
+    container:
+        image: ghcr.io/gis-ops/docker-valhalla/valhalla:latest
+        options: --privileged --cgroupns host --user root
     strategy:
       matrix:
         state:
