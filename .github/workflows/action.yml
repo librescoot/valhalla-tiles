@@ -8,7 +8,7 @@ on:
   
 jobs:
   generate_tiles:
-    runs-on: tilemaker
+    runs-on: self-hosted
     container:
         image: ghcr.io/gis-ops/docker-valhalla/valhalla:latest
         options: --privileged --cgroupns host --user root
@@ -83,7 +83,7 @@ jobs:
         
   release:
     needs: generate_tiles
-    runs-on: tilemaker
+    runs-on: ubuntu-latest
     steps:
       - name: Download All Build Artifacts
         uses: actions/download-artifact@v4
