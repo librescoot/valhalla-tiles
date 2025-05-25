@@ -1,4 +1,8 @@
 name: Automatic Tile Generation and Release - German States
+
+permissions:
+  contents: write
+
 on:
   workflow_dispatch:
   
