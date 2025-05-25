@@ -40,7 +40,7 @@ jobs:
     - name: Mjolnir Build for ${{ matrix.state.name }}
       run: |
         echo "Building Valhalla configuration for ${{ matrix.state.name }}..."
-        sudo valhalla_build_config | sudo tee valhalla.json
+        sudo valhalla_build_config | sudo tee -a valhalla.json
         
         echo "Building tiles for ${{ matrix.state.name }}..."
         sudo valhalla_build_tiles -c valhalla.json ${{ matrix.state.name }}-latest.osm.pbf
@@ -50,26 +50,37 @@ jobs:
         
         echo "Creating tarball for ${{ matrix.state.name }}..."
         sudo mv /data/valhalla/tiles.tar /data/valhalla/valhalla_tiles_${{ matrix.state.name }}.tar
-
-        echo "Fixing permissions for artifact upload..."
-        sudo chown $(id -u):$(id -g) /data/valhalla/valhalla_tiles_${{ matrix.state.name }}.tar
-        sudo chmod 644 /data/valhalla/valhalla_tiles_${{ matrix.state.name }}.tar
         
         echo "Tile generation completed for ${{ matrix.state.name }}"
         ls -la /data/valhalla/
+        
+    - name: Copy and Fix Permissions for ${{ matrix.state.name }}
+      run: |
+        # Create temp directory in workspace (accessible by runner)
+        mkdir -p /tmp/artifacts
+        
+        # Copy file to accessible location
+        sudo cp /data/valhalla/valhalla_tiles_${{ matrix.state.name }}.tar /tmp/artifacts/
+        
+        # Fix ownership and permissions (666 for maximum compatibility)
+        sudo chown $(whoami):$(whoami) /tmp/artifacts/valhalla_tiles_${{ matrix.state.name }}.tar
+        sudo chmod 666 /tmp/artifacts/valhalla_tiles_${{ matrix.state.name }}.tar
+        
+        echo "File copied and permissions fixed:"
+        ls -la /tmp/artifacts/
         
     - name: Upload Build Artifact for ${{ matrix.state.name }}
       uses: actions/upload-artifact@v4
       with:
         name: valhalla_tiles_${{ matrix.state.name }}
-        path: /data/valhalla/valhalla_tiles_${{ matrix.state.name }}.tar
+        path: /tmp/artifacts/valhalla_tiles_${{ matrix.state.name }}.tar
         
   release:
     needs: generate_tiles
     runs-on: tilemaker
     steps:
       - name: Download All Build Artifacts
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           path: ~/artifacts
           
