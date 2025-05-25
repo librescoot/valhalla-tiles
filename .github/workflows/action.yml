@@ -40,7 +40,7 @@ jobs:
     - name: Mjolnir Build for ${{ matrix.state.name }}
       run: |
         echo "Building Valhalla configuration for ${{ matrix.state.name }}..."
-        sudo valhalla_build_config | sudo tee -a valhalla.json
+        sudo valhalla_build_config | sudo tee valhalla.json
         
         echo "Building tiles for ${{ matrix.state.name }}..."
         sudo valhalla_build_tiles -c valhalla.json ${{ matrix.state.name }}-latest.osm.pbf
