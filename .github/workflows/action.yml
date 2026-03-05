@@ -19,8 +19,6 @@ jobs:
         state:
           - { name: "baden-wuerttemberg", url: "https://download.geofabrik.de/europe/germany/baden-wuerttemberg-latest.osm.pbf" }
           - { name: "bayern", url: "https://download.geofabrik.de/europe/germany/bayern-latest.osm.pbf" }
-          - { name: "berlin", url: "https://download.geofabrik.de/europe/germany/berlin-latest.osm.pbf" }
-          - { name: "brandenburg", url: "https://download.geofabrik.de/europe/germany/brandenburg-latest.osm.pbf" }
           - { name: "bremen", url: "https://download.geofabrik.de/europe/germany/bremen-latest.osm.pbf" }
           - { name: "hamburg", url: "https://download.geofabrik.de/europe/germany/hamburg-latest.osm.pbf" }
           - { name: "hessen", url: "https://download.geofabrik.de/europe/germany/hessen-latest.osm.pbf" }
@@ -76,15 +74,65 @@ jobs:
         
         echo "File copied and permissions fixed:"
         ls -la /tmp/artifacts/
-        
+
     - name: Upload Build Artifact for ${{ matrix.state.name }}
       uses: actions/upload-artifact@v4
       with:
         name: valhalla_tiles_${{ matrix.state.name }}
         path: /tmp/artifacts/valhalla_tiles_${{ matrix.state.name }}.tar
-        
+
+  generate_berlin_brandenburg:
+    runs-on: self-hosted
+    container:
+        image: ghcr.io/gis-ops/docker-valhalla/valhalla:latest
+        options: --privileged --cgroupns host --user root
+    steps:
+
+    - name: Download Dependencies
+      run: sudo apt install wget -y
+
+    - name: Download Berlin + Brandenburg PBF files
+      run: |
+        echo "Downloading Berlin PBF file..."
+        sudo wget -q https://download.geofabrik.de/europe/germany/berlin-latest.osm.pbf
+        echo "Downloading Brandenburg PBF file..."
+        sudo wget -q https://download.geofabrik.de/europe/germany/brandenburg-latest.osm.pbf
+        ls -la *.osm.pbf
+
+    - name: Mjolnir Build for berlin_brandenburg
+      run: |
+        echo "Building Valhalla configuration for berlin_brandenburg..."
+        sudo valhalla_build_config | sudo tee valhalla.json
+
+        echo "Building tiles for berlin_brandenburg (Berlin + Brandenburg)..."
+        sudo valhalla_build_tiles -c valhalla.json berlin-latest.osm.pbf brandenburg-latest.osm.pbf
+
+        echo "Building extract for berlin_brandenburg..."
+        sudo valhalla_build_extract -c valhalla.json
+
+        echo "Creating tarball for berlin_brandenburg..."
+        sudo mv /data/valhalla/tiles.tar /data/valhalla/valhalla_tiles_berlin_brandenburg.tar
+
+        echo "Tile generation completed for berlin_brandenburg"
+        ls -la /data/valhalla/
+
+    - name: Copy and Fix Permissions for berlin_brandenburg
+      run: |
+        mkdir -p /tmp/artifacts
+        sudo cp /data/valhalla/valhalla_tiles_berlin_brandenburg.tar /tmp/artifacts/
+        sudo chown $(whoami):$(whoami) /tmp/artifacts/valhalla_tiles_berlin_brandenburg.tar
+        sudo chmod 666 /tmp/artifacts/valhalla_tiles_berlin_brandenburg.tar
+        echo "File copied and permissions fixed:"
+        ls -la /tmp/artifacts/
+
+    - name: Upload Build Artifact for berlin_brandenburg
+      uses: actions/upload-artifact@v4
+      with:
+        name: valhalla_tiles_berlin_brandenburg
+        path: /tmp/artifacts/valhalla_tiles_berlin_brandenburg.tar
+
   release:
-    needs: generate_tiles
+    needs: [generate_tiles, generate_berlin_brandenburg]
     runs-on: ubuntu-latest
     steps:
       - name: Download All Build Artifacts
