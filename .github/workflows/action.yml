@@ -46,7 +46,10 @@ jobs:
     - name: Mjolnir Build for ${{ matrix.state.name }}
       run: |
         echo "Building Valhalla configuration for ${{ matrix.state.name }}..."
-        sudo valhalla_build_config | sudo tee valhalla.json
+        sudo valhalla_build_config \
+          --mjolnir-include-bicycle false \
+          --mjolnir-include-pedestrian false \
+          | sudo tee valhalla.json
         
         echo "Building tiles for ${{ matrix.state.name }}..."
         sudo valhalla_build_tiles -c valhalla.json ${{ matrix.state.name }}-latest.osm.pbf
@@ -102,7 +105,10 @@ jobs:
     - name: Mjolnir Build for berlin_brandenburg
       run: |
         echo "Building Valhalla configuration for berlin_brandenburg..."
-        sudo valhalla_build_config | sudo tee valhalla.json
+        sudo valhalla_build_config \
+          --mjolnir-include-bicycle false \
+          --mjolnir-include-pedestrian false \
+          | sudo tee valhalla.json
 
         echo "Building tiles for berlin_brandenburg (Berlin + Brandenburg)..."
         sudo valhalla_build_tiles -c valhalla.json berlin-latest.osm.pbf brandenburg-latest.osm.pbf
