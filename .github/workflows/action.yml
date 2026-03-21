@@ -12,7 +12,7 @@ jobs:
   generate_tiles:
     runs-on: self-hosted
     container:
-        image: ghcr.io/gis-ops/docker-valhalla/valhalla:latest
+        image: ghcr.io/gis-ops/docker-valhalla/valhalla:3.5.1
         options: --privileged --cgroupns host --user root
     strategy:
       matrix:
