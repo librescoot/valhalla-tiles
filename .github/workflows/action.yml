@@ -12,7 +12,7 @@ jobs:
   generate_tiles:
     runs-on: self-hosted
     container:
-        image: ghcr.io/gis-ops/docker-valhalla/valhalla:3.5.1
+        image: ghcr.io/valhalla/valhalla:3.6.3
         options: --privileged --cgroupns host --user root
     strategy:
       matrix:
@@ -87,7 +87,7 @@ jobs:
   generate_berlin_brandenburg:
     runs-on: self-hosted
     container:
-        image: ghcr.io/gis-ops/docker-valhalla/valhalla:latest
+        image: ghcr.io/valhalla/valhalla:3.6.3
         options: --privileged --cgroupns host --user root
     steps:
 
