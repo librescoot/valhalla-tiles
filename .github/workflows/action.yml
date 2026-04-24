@@ -89,7 +89,7 @@ jobs:
         ls -la /tmp/artifacts/
 
     - name: Upload Build Artifact for ${{ matrix.state.name }}
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: valhalla_tiles_${{ matrix.state.name }}
         path: /tmp/artifacts/valhalla_tiles_${{ matrix.state.name }}.tar
@@ -150,7 +150,7 @@ jobs:
         ls -la /tmp/artifacts/
 
     - name: Upload Build Artifact for berlin_brandenburg
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: valhalla_tiles_berlin_brandenburg
         path: /tmp/artifacts/valhalla_tiles_berlin_brandenburg.tar
@@ -160,21 +160,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Download All Build Artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: artifacts
-          
+
       - name: List All Artifacts
         run: |
           echo "Listing all downloaded artifacts:"
           find artifacts -name "*.tar" -type f
-          
+
       - name: Create Automatic Release
-        uses: marvinpinto/action-automatic-releases@latest
+        uses: softprops/action-gh-release@v3
         with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          tag_name: latest
+          name: "Valhalla Tiles - German States (Individual Packages)"
           prerelease: false
-          automatic_release_tag: latest
-          title: "Valhalla Tiles - German States (Individual Packages)"
+          make_latest: true
           files: |
             artifacts/**/*
