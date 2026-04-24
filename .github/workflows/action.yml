@@ -8,14 +8,11 @@ on:
     - cron: '30 0 1 * *'  # Monthly on the 1st at 00:30 UTC
   workflow_dispatch:
 
-env:
-  VALHALLA_IMAGE: ghcr.io/valhalla/valhalla:3.6.3
-
 jobs:
   generate_tiles:
     runs-on: self-hosted
-    container:
-        image: ${{ env.VALHALLA_IMAGE }}
+    container: &valhalla_container
+        image: ghcr.io/valhalla/valhalla:3.6.3
         options: --privileged --cgroupns host --user root
     strategy:
       matrix:
@@ -99,9 +96,7 @@ jobs:
 
   generate_berlin_brandenburg:
     runs-on: self-hosted
-    container:
-        image: ${{ env.VALHALLA_IMAGE }}
-        options: --privileged --cgroupns host --user root
+    container: *valhalla_container
     steps:
 
     - name: Download Dependencies
