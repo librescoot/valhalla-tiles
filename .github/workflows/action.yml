@@ -102,11 +102,15 @@ jobs:
     - name: Download Dependencies
       run: apt install wget -y
 
-    - name: Download Berlin + Brandenburg PBF files
+    # Geofabrik's brandenburg-latest.osm.pbf already fully contains Berlin
+    # (berlin and brandenburg extracts share a padded bbox, and brandenburg
+    # is the superset by construction since it surrounds Berlin). Node/way/
+    # relation counts match between brandenburg alone and an osmium merge
+    # of the two. Feeding both to valhalla_build_tiles creates duplicate
+    # edges for every way that exists in both files — 6 parallel edges per
+    # Berlin way instead of 2, which explodes maneuver count at route time.
+    - name: Download Brandenburg PBF (superset of Berlin)
       run: |
-        echo "Downloading Berlin PBF file..."
-        wget -q https://download.geofabrik.de/europe/germany/berlin-latest.osm.pbf
-        echo "Downloading Brandenburg PBF file..."
         wget -q https://download.geofabrik.de/europe/germany/brandenburg-latest.osm.pbf
         ls -la *.osm.pbf
 
@@ -123,10 +127,10 @@ jobs:
           | tee valhalla.json
 
         echo "Building admin boundaries for berlin_brandenburg..."
-        valhalla_build_admins -c valhalla.json berlin-latest.osm.pbf brandenburg-latest.osm.pbf
+        valhalla_build_admins -c valhalla.json brandenburg-latest.osm.pbf
 
-        echo "Building tiles for berlin_brandenburg (Berlin + Brandenburg)..."
-        valhalla_build_tiles -c valhalla.json berlin-latest.osm.pbf brandenburg-latest.osm.pbf
+        echo "Building tiles for berlin_brandenburg..."
+        valhalla_build_tiles -c valhalla.json brandenburg-latest.osm.pbf
 
         echo "Applying OpenStreetMapSpeeds default speeds to tiles..."
         valhalla_assign_speeds -c valhalla.json
