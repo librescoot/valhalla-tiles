@@ -9,11 +9,56 @@ on:
   workflow_dispatch:
 
 jobs:
-  generate_tiles:
+  # Build the admin DB once from the country-level PBF and share it with the
+  # per-state tile builds. Geofabrik state extracts are clipped to the state
+  # polygon and don't carry the country (admin_level=2) relation; without it
+  # Valhalla can't resolve drive_on_right for Germany, so roundabout exit
+  # counts come out wrong (always "2nd exit"). See valhalla/valhalla#2320 and
+  # #5116.
+  generate_admins:
     runs-on: self-hosted
     container: &valhalla_container
         image: ghcr.io/valhalla/valhalla:3.6.3
         options: --privileged --cgroupns host --user root
+    steps:
+
+    - name: Download Dependencies
+      run: apt install wget -y
+
+    - name: Download Germany PBF
+      run: |
+        wget -q https://download.geofabrik.de/europe/germany-latest.osm.pbf
+        ls -la *.osm.pbf
+
+    - name: Build admin boundaries
+      run: |
+        valhalla_build_config \
+          --mjolnir-include-bicycle false \
+          --mjolnir-include-pedestrian false \
+          | tee valhalla.json
+
+        valhalla_build_admins -c valhalla.json germany-latest.osm.pbf
+
+        ls -la /data/valhalla/
+
+    - name: Copy and Fix Permissions
+      run: |
+        mkdir -p /tmp/artifacts
+        cp /data/valhalla/admin.sqlite /tmp/artifacts/
+        chown $(whoami):$(whoami) /tmp/artifacts/admin.sqlite
+        chmod 666 /tmp/artifacts/admin.sqlite
+        ls -la /tmp/artifacts/
+
+    - name: Upload admin DB Artifact
+      uses: actions/upload-artifact@v7
+      with:
+        name: admin-sqlite
+        path: /tmp/artifacts/admin.sqlite
+
+  generate_tiles:
+    needs: generate_admins
+    runs-on: self-hosted
+    container: *valhalla_container
     strategy:
       matrix:
         state:
@@ -32,16 +77,28 @@ jobs:
           - { name: "schleswig-holstein", url: "https://download.geofabrik.de/europe/germany/schleswig-holstein-latest.osm.pbf" }
           - { name: "thueringen", url: "https://download.geofabrik.de/europe/germany/thueringen-latest.osm.pbf" }
     steps:
-    
+
     - name: Download Dependencies
       run: apt install wget -y
-    
+
     - name: Download OSM PBF for ${{ matrix.state.name }}
       run: |
         echo "Downloading ${{ matrix.state.name }} PBF file..."
         wget -q ${{ matrix.state.url }}
         echo "Download completed for ${{ matrix.state.name }}"
         ls -la *.osm.pbf
+
+    - name: Download shared admin DB
+      uses: actions/download-artifact@v8
+      with:
+        name: admin-sqlite
+        path: /tmp/admin
+
+    - name: Install admin DB
+      run: |
+        mkdir -p /data/valhalla
+        cp /tmp/admin/admin.sqlite /data/valhalla/admin.sqlite
+        ls -la /data/valhalla/admin.sqlite
 
     - name: Fetch community default_speeds.json
       run: wget -q https://raw.githubusercontent.com/OpenStreetMapSpeeds/schema/master/default_speeds.json
@@ -55,10 +112,7 @@ jobs:
           --mjolnir-default-speeds-config $(pwd)/default_speeds.json \
           | tee valhalla.json
 
-        echo "Building admin boundaries for ${{ matrix.state.name }}..."
-        valhalla_build_admins -c valhalla.json ${{ matrix.state.name }}-latest.osm.pbf
-
-        echo "Building tiles for ${{ matrix.state.name }}..."
+        echo "Building tiles for ${{ matrix.state.name }} (using shared admin DB)..."
         valhalla_build_tiles -c valhalla.json ${{ matrix.state.name }}-latest.osm.pbf
 
         echo "Applying OpenStreetMapSpeeds default speeds to tiles..."
@@ -66,25 +120,25 @@ jobs:
 
         echo "Building extract for ${{ matrix.state.name }}..."
         valhalla_build_extract -c valhalla.json
-        
+
         echo "Creating tarball for ${{ matrix.state.name }}..."
         mv /data/valhalla/tiles.tar /data/valhalla/valhalla_tiles_${{ matrix.state.name }}.tar
-        
+
         echo "Tile generation completed for ${{ matrix.state.name }}"
         ls -la /data/valhalla/
-        
+
     - name: Copy and Fix Permissions for ${{ matrix.state.name }}
       run: |
         # Create temp directory in workspace (accessible by runner)
         mkdir -p /tmp/artifacts
-        
+
         # Copy file to accessible location
         cp /data/valhalla/valhalla_tiles_${{ matrix.state.name }}.tar /tmp/artifacts/
-        
+
         # Fix ownership and permissions (666 for maximum compatibility)
         chown $(whoami):$(whoami) /tmp/artifacts/valhalla_tiles_${{ matrix.state.name }}.tar
         chmod 666 /tmp/artifacts/valhalla_tiles_${{ matrix.state.name }}.tar
-        
+
         echo "File copied and permissions fixed:"
         ls -la /tmp/artifacts/
 
@@ -95,6 +149,7 @@ jobs:
         path: /tmp/artifacts/valhalla_tiles_${{ matrix.state.name }}.tar
 
   generate_berlin_brandenburg:
+    needs: generate_admins
     runs-on: self-hosted
     container: *valhalla_container
     steps:
@@ -114,6 +169,18 @@ jobs:
         wget -q https://download.geofabrik.de/europe/germany/brandenburg-latest.osm.pbf
         ls -la *.osm.pbf
 
+    - name: Download shared admin DB
+      uses: actions/download-artifact@v8
+      with:
+        name: admin-sqlite
+        path: /tmp/admin
+
+    - name: Install admin DB
+      run: |
+        mkdir -p /data/valhalla
+        cp /tmp/admin/admin.sqlite /data/valhalla/admin.sqlite
+        ls -la /data/valhalla/admin.sqlite
+
     - name: Fetch community default_speeds.json
       run: wget -q https://raw.githubusercontent.com/OpenStreetMapSpeeds/schema/master/default_speeds.json
 
@@ -126,10 +193,7 @@ jobs:
           --mjolnir-default-speeds-config $(pwd)/default_speeds.json \
           | tee valhalla.json
 
-        echo "Building admin boundaries for berlin_brandenburg..."
-        valhalla_build_admins -c valhalla.json brandenburg-latest.osm.pbf
-
-        echo "Building tiles for berlin_brandenburg..."
+        echo "Building tiles for berlin_brandenburg (using shared admin DB)..."
         valhalla_build_tiles -c valhalla.json brandenburg-latest.osm.pbf
 
         echo "Applying OpenStreetMapSpeeds default speeds to tiles..."
@@ -163,10 +227,11 @@ jobs:
     needs: [generate_tiles, generate_berlin_brandenburg]
     runs-on: ubuntu-latest
     steps:
-      - name: Download All Build Artifacts
+      - name: Download tile artifacts
         uses: actions/download-artifact@v8
         with:
           path: artifacts
+          pattern: valhalla_tiles_*
 
       - name: List All Artifacts
         run: |
@@ -181,4 +246,4 @@ jobs:
           prerelease: false
           make_latest: true
           files: |
-            artifacts/**/*
+            artifacts/**/*.tar
