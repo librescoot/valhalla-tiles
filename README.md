@@ -82,3 +82,12 @@ Manual trigger: Actions → "Automatic Tile Generation and Release - German Stat
 - **Admin boundaries**: built per-region for country/state-level routing rules
 - **Source**: [Geofabrik](https://download.geofabrik.de/europe/germany.html) regional extracts of [OpenStreetMap](https://www.openstreetmap.org)
 - **Generator**: [Valhalla](https://github.com/valhalla/valhalla) 3.6.3
+
+## License
+
+Generated tiles contain OpenStreetMap data under the [Open Database License](http://opendatacommons.org/licenses/odbl/1.0/).
+
+This project is dual-licensed. The source code is available under the
+[Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License][cc-by-nc-sa].
+The maintainers reserve the right to grant separate licenses for commercial distribution; please contact the maintainers to discuss commercial licensing.
+
