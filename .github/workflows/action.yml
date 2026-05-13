@@ -1,4 +1,4 @@
-name: Automatic Tile Generation and Release - German States
+name: Automatic Tile Generation and Release - Germany + Benelux
 
 permissions:
   contents: write
@@ -223,9 +223,84 @@ jobs:
         name: valhalla_tiles_berlin_brandenburg
         path: /tmp/artifacts/valhalla_tiles_berlin_brandenburg.tar
 
+  # Country-level builds for Benelux. Each country gets its own admin DB built
+  # from the same country PBF that feeds the tile build — no shared admin
+  # artifact needed since admin and tile source are the same file.
+  generate_country_tiles:
+    runs-on: self-hosted
+    container: *valhalla_container
+    strategy:
+      fail-fast: false
+      matrix:
+        country:
+          - { name: "netherlands", url: "https://download.geofabrik.de/europe/netherlands-latest.osm.pbf" }
+          - { name: "belgium", url: "https://download.geofabrik.de/europe/belgium-latest.osm.pbf" }
+          - { name: "luxembourg", url: "https://download.geofabrik.de/europe/luxembourg-latest.osm.pbf" }
+    steps:
+
+    - name: Download Dependencies
+      run: apt install wget -y
+
+    - name: Download OSM PBF for ${{ matrix.country.name }}
+      run: |
+        echo "Downloading ${{ matrix.country.name }} PBF file..."
+        wget -q ${{ matrix.country.url }}
+        echo "Download completed for ${{ matrix.country.name }}"
+        ls -la *.osm.pbf
+
+    - name: Fetch community default_speeds.json
+      run: wget -q https://raw.githubusercontent.com/OpenStreetMapSpeeds/schema/master/default_speeds.json
+
+    - name: Mjolnir Build for ${{ matrix.country.name }}
+      run: |
+        echo "Building Valhalla configuration for ${{ matrix.country.name }}..."
+        valhalla_build_config \
+          --mjolnir-include-bicycle false \
+          --mjolnir-include-pedestrian false \
+          --mjolnir-default-speeds-config $(pwd)/default_speeds.json \
+          | tee valhalla.json
+
+        echo "Building admin boundaries for ${{ matrix.country.name }}..."
+        mkdir -p /data/valhalla
+        valhalla_build_admins -c valhalla.json ${{ matrix.country.name }}-latest.osm.pbf
+
+        echo "Building tiles for ${{ matrix.country.name }}..."
+        valhalla_build_tiles -c valhalla.json ${{ matrix.country.name }}-latest.osm.pbf
+
+        echo "Applying OpenStreetMapSpeeds default speeds to tiles..."
+        valhalla_assign_speeds -c valhalla.json
+
+        echo "Building extract for ${{ matrix.country.name }}..."
+        valhalla_build_extract -c valhalla.json
+
+        echo "Creating tarball for ${{ matrix.country.name }}..."
+        mv /data/valhalla/tiles.tar /data/valhalla/valhalla_tiles_${{ matrix.country.name }}.tar
+
+        echo "Tile generation completed for ${{ matrix.country.name }}"
+        ls -la /data/valhalla/
+
+    - name: Copy and Fix Permissions for ${{ matrix.country.name }}
+      run: |
+        mkdir -p /tmp/artifacts
+        cp /data/valhalla/valhalla_tiles_${{ matrix.country.name }}.tar /tmp/artifacts/
+        chown $(whoami):$(whoami) /tmp/artifacts/valhalla_tiles_${{ matrix.country.name }}.tar
+        chmod 666 /tmp/artifacts/valhalla_tiles_${{ matrix.country.name }}.tar
+        echo "File copied and permissions fixed:"
+        ls -la /tmp/artifacts/
+
+    - name: Upload Build Artifact for ${{ matrix.country.name }}
+      uses: actions/upload-artifact@v7
+      with:
+        name: valhalla_tiles_${{ matrix.country.name }}
+        path: /tmp/artifacts/valhalla_tiles_${{ matrix.country.name }}.tar
+
   release:
-    needs: [generate_tiles, generate_berlin_brandenburg]
+    needs: [generate_tiles, generate_berlin_brandenburg, generate_country_tiles]
     runs-on: ubuntu-latest
+    # Only publish to the `latest` release from main. Workflow runs on feature
+    # branches still produce artifacts (downloadable from the workflow run UI)
+    # but must not overwrite the production release.
+    if: github.ref == 'refs/heads/main'
     steps:
       - name: Download tile artifacts
         uses: actions/download-artifact@v8
