@@ -1,4 +1,4 @@
-name: Automatic Tile Generation and Release - German States
+name: Automatic Tile Generation and Release - Germany + Benelux + France
 
 permissions:
   contents: write
@@ -9,61 +9,37 @@ on:
   workflow_dispatch:
 
 jobs:
-  # Build the admin DB once from the country-level PBF and share it with the
-  # per-state tile builds. Geofabrik state extracts are clipped to the state
-  # polygon and don't carry the country (admin_level=2) relation; without it
-  # Valhalla can't resolve drive_on_right for Germany, so roundabout exit
-  # counts come out wrong (always "2nd exit"). See valhalla/valhalla#2320 and
-  # #5116.
-  generate_admins:
+  # Single matrix of all regional builds. Each job:
+  #   1. Checks out the repo to pick up admin-overlays/west-europe.osm.pbf
+  #   2. Downloads its regional Geofabrik PBF
+  #   3. Builds admins from (overlay + regional PBF) so Valhalla has the L2
+  #      country relation it needs for drive_on_right (regional extracts are
+  #      clipped to the region polygon and don't carry the country relation).
+  #   4. Builds tiles, applies OpenStreetMapSpeeds defaults, packages.
+  #
+  # The overlay carries hand-built L2 polygons for DE/FR/NL/BE/LU with the
+  # right ISO3166-1 codes. See tools/build-admin-overlay.py to regenerate.
+  # This replaces the previous pattern of downloading germany-latest.osm.pbf
+  # (5 GB) in a separate generate_admins job and sharing via artifact.
+  generate_tiles:
     runs-on: self-hosted
-    container: &valhalla_container
+    container:
         image: ghcr.io/valhalla/valhalla:3.6.3
         options: --privileged --cgroupns host --user root
-    steps:
-
-    - name: Download Dependencies
-      run: apt install wget -y
-
-    - name: Download Germany PBF
-      run: |
-        wget -q https://download.geofabrik.de/europe/germany-latest.osm.pbf
-        ls -la *.osm.pbf
-
-    - name: Build admin boundaries
-      run: |
-        valhalla_build_config \
-          --mjolnir-include-bicycle false \
-          --mjolnir-include-pedestrian false \
-          | tee valhalla.json
-
-        valhalla_build_admins -c valhalla.json germany-latest.osm.pbf
-
-        ls -la /data/valhalla/
-
-    - name: Copy and Fix Permissions
-      run: |
-        mkdir -p /tmp/artifacts
-        cp /data/valhalla/admin.sqlite /tmp/artifacts/
-        chown $(whoami):$(whoami) /tmp/artifacts/admin.sqlite
-        chmod 666 /tmp/artifacts/admin.sqlite
-        ls -la /tmp/artifacts/
-
-    - name: Upload admin DB Artifact
-      uses: actions/upload-artifact@v7
-      with:
-        name: admin-sqlite
-        path: /tmp/artifacts/admin.sqlite
-
-  generate_tiles:
-    needs: generate_admins
-    runs-on: self-hosted
-    container: *valhalla_container
     strategy:
+      fail-fast: false
       matrix:
-        state:
+        region:
           - { name: "baden-wuerttemberg", url: "https://download.geofabrik.de/europe/germany/baden-wuerttemberg-latest.osm.pbf" }
           - { name: "bayern", url: "https://download.geofabrik.de/europe/germany/bayern-latest.osm.pbf" }
+          # Berlin's Geofabrik extract is fully contained in Brandenburg's
+          # (Brandenburg surrounds Berlin geographically and Geofabrik's
+          # padded bbox makes the two extracts produce identical node/way/
+          # relation sets for Berlin). Feeding both to valhalla_build_tiles
+          # creates duplicate edges for every Berlin way, exploding maneuver
+          # counts at route time. So we use just the Brandenburg PBF but
+          # label the output `berlin_brandenburg` to reflect coverage.
+          - { name: "berlin_brandenburg", url: "https://download.geofabrik.de/europe/germany/brandenburg-latest.osm.pbf" }
           - { name: "bremen", url: "https://download.geofabrik.de/europe/germany/bremen-latest.osm.pbf" }
           - { name: "hamburg", url: "https://download.geofabrik.de/europe/germany/hamburg-latest.osm.pbf" }
           - { name: "hessen", url: "https://download.geofabrik.de/europe/germany/hessen-latest.osm.pbf" }
@@ -76,156 +52,82 @@ jobs:
           - { name: "sachsen-anhalt", url: "https://download.geofabrik.de/europe/germany/sachsen-anhalt-latest.osm.pbf" }
           - { name: "schleswig-holstein", url: "https://download.geofabrik.de/europe/germany/schleswig-holstein-latest.osm.pbf" }
           - { name: "thueringen", url: "https://download.geofabrik.de/europe/germany/thueringen-latest.osm.pbf" }
+          - { name: "netherlands", url: "https://download.geofabrik.de/europe/netherlands-latest.osm.pbf" }
+          - { name: "belgium", url: "https://download.geofabrik.de/europe/belgium-latest.osm.pbf" }
+          - { name: "luxembourg", url: "https://download.geofabrik.de/europe/luxembourg-latest.osm.pbf" }
+          - { name: "ile-de-france", url: "https://download.geofabrik.de/europe/france/ile-de-france-latest.osm.pbf" }
     steps:
+
+    - name: Checkout repository (for admin overlay)
+      uses: actions/checkout@v4
 
     - name: Download Dependencies
       run: apt install wget -y
 
-    - name: Download OSM PBF for ${{ matrix.state.name }}
+    - name: Download OSM PBF for ${{ matrix.region.name }}
       run: |
-        echo "Downloading ${{ matrix.state.name }} PBF file..."
-        wget -q ${{ matrix.state.url }}
-        echo "Download completed for ${{ matrix.state.name }}"
+        echo "Downloading ${{ matrix.region.name }} PBF file..."
+        pbf=$(basename "${{ matrix.region.url }}")
+        wget -q -O "$pbf" "${{ matrix.region.url }}"
+        echo "Download completed for ${{ matrix.region.name }}"
         ls -la *.osm.pbf
-
-    - name: Download shared admin DB
-      uses: actions/download-artifact@v8
-      with:
-        name: admin-sqlite
-        path: /tmp/admin
-
-    - name: Install admin DB
-      run: |
-        mkdir -p /data/valhalla
-        cp /tmp/admin/admin.sqlite /data/valhalla/admin.sqlite
-        ls -la /data/valhalla/admin.sqlite
 
     - name: Fetch community default_speeds.json
       run: wget -q https://raw.githubusercontent.com/OpenStreetMapSpeeds/schema/master/default_speeds.json
 
-    - name: Mjolnir Build for ${{ matrix.state.name }}
+    - name: Mjolnir Build for ${{ matrix.region.name }}
       run: |
-        echo "Building Valhalla configuration for ${{ matrix.state.name }}..."
+        echo "Building Valhalla configuration for ${{ matrix.region.name }}..."
         valhalla_build_config \
           --mjolnir-include-bicycle false \
           --mjolnir-include-pedestrian false \
           --mjolnir-default-speeds-config $(pwd)/default_speeds.json \
           | tee valhalla.json
 
-        echo "Building tiles for ${{ matrix.state.name }} (using shared admin DB)..."
-        valhalla_build_tiles -c valhalla.json ${{ matrix.state.name }}-latest.osm.pbf
-
-        echo "Applying OpenStreetMapSpeeds default speeds to tiles..."
-        valhalla_assign_speeds -c valhalla.json
-
-        echo "Building extract for ${{ matrix.state.name }}..."
-        valhalla_build_extract -c valhalla.json
-
-        echo "Creating tarball for ${{ matrix.state.name }}..."
-        mv /data/valhalla/tiles.tar /data/valhalla/valhalla_tiles_${{ matrix.state.name }}.tar
-
-        echo "Tile generation completed for ${{ matrix.state.name }}"
-        ls -la /data/valhalla/
-
-    - name: Copy and Fix Permissions for ${{ matrix.state.name }}
-      run: |
-        # Create temp directory in workspace (accessible by runner)
-        mkdir -p /tmp/artifacts
-
-        # Copy file to accessible location
-        cp /data/valhalla/valhalla_tiles_${{ matrix.state.name }}.tar /tmp/artifacts/
-
-        # Fix ownership and permissions (666 for maximum compatibility)
-        chown $(whoami):$(whoami) /tmp/artifacts/valhalla_tiles_${{ matrix.state.name }}.tar
-        chmod 666 /tmp/artifacts/valhalla_tiles_${{ matrix.state.name }}.tar
-
-        echo "File copied and permissions fixed:"
-        ls -la /tmp/artifacts/
-
-    - name: Upload Build Artifact for ${{ matrix.state.name }}
-      uses: actions/upload-artifact@v7
-      with:
-        name: valhalla_tiles_${{ matrix.state.name }}
-        path: /tmp/artifacts/valhalla_tiles_${{ matrix.state.name }}.tar
-
-  generate_berlin_brandenburg:
-    needs: generate_admins
-    runs-on: self-hosted
-    container: *valhalla_container
-    steps:
-
-    - name: Download Dependencies
-      run: apt install wget -y
-
-    # Geofabrik's brandenburg-latest.osm.pbf already fully contains Berlin
-    # (berlin and brandenburg extracts share a padded bbox, and brandenburg
-    # is the superset by construction since it surrounds Berlin). Node/way/
-    # relation counts match between brandenburg alone and an osmium merge
-    # of the two. Feeding both to valhalla_build_tiles creates duplicate
-    # edges for every way that exists in both files — 6 parallel edges per
-    # Berlin way instead of 2, which explodes maneuver count at route time.
-    - name: Download Brandenburg PBF (superset of Berlin)
-      run: |
-        wget -q https://download.geofabrik.de/europe/germany/brandenburg-latest.osm.pbf
-        ls -la *.osm.pbf
-
-    - name: Download shared admin DB
-      uses: actions/download-artifact@v8
-      with:
-        name: admin-sqlite
-        path: /tmp/admin
-
-    - name: Install admin DB
-      run: |
+        pbf=$(basename "${{ matrix.region.url }}")
         mkdir -p /data/valhalla
-        cp /tmp/admin/admin.sqlite /data/valhalla/admin.sqlite
-        ls -la /data/valhalla/admin.sqlite
 
-    - name: Fetch community default_speeds.json
-      run: wget -q https://raw.githubusercontent.com/OpenStreetMapSpeeds/schema/master/default_speeds.json
+        echo "Building admin DB from overlay + regional PBF..."
+        valhalla_build_admins -c valhalla.json \
+          admin-overlays/west-europe.osm.pbf \
+          "$pbf"
 
-    - name: Mjolnir Build for berlin_brandenburg
-      run: |
-        echo "Building Valhalla configuration for berlin_brandenburg..."
-        valhalla_build_config \
-          --mjolnir-include-bicycle false \
-          --mjolnir-include-pedestrian false \
-          --mjolnir-default-speeds-config $(pwd)/default_speeds.json \
-          | tee valhalla.json
-
-        echo "Building tiles for berlin_brandenburg (using shared admin DB)..."
-        valhalla_build_tiles -c valhalla.json brandenburg-latest.osm.pbf
+        echo "Building tiles for ${{ matrix.region.name }}..."
+        valhalla_build_tiles -c valhalla.json "$pbf"
 
         echo "Applying OpenStreetMapSpeeds default speeds to tiles..."
         valhalla_assign_speeds -c valhalla.json
 
-        echo "Building extract for berlin_brandenburg..."
+        echo "Building extract for ${{ matrix.region.name }}..."
         valhalla_build_extract -c valhalla.json
 
-        echo "Creating tarball for berlin_brandenburg..."
-        mv /data/valhalla/tiles.tar /data/valhalla/valhalla_tiles_berlin_brandenburg.tar
+        echo "Creating tarball for ${{ matrix.region.name }}..."
+        mv /data/valhalla/tiles.tar /data/valhalla/valhalla_tiles_${{ matrix.region.name }}.tar
 
-        echo "Tile generation completed for berlin_brandenburg"
+        echo "Tile generation completed for ${{ matrix.region.name }}"
         ls -la /data/valhalla/
 
-    - name: Copy and Fix Permissions for berlin_brandenburg
+    - name: Copy and Fix Permissions for ${{ matrix.region.name }}
       run: |
         mkdir -p /tmp/artifacts
-        cp /data/valhalla/valhalla_tiles_berlin_brandenburg.tar /tmp/artifacts/
-        chown $(whoami):$(whoami) /tmp/artifacts/valhalla_tiles_berlin_brandenburg.tar
-        chmod 666 /tmp/artifacts/valhalla_tiles_berlin_brandenburg.tar
-        echo "File copied and permissions fixed:"
+        cp /data/valhalla/valhalla_tiles_${{ matrix.region.name }}.tar /tmp/artifacts/
+        chown $(whoami):$(whoami) /tmp/artifacts/valhalla_tiles_${{ matrix.region.name }}.tar
+        chmod 666 /tmp/artifacts/valhalla_tiles_${{ matrix.region.name }}.tar
         ls -la /tmp/artifacts/
 
-    - name: Upload Build Artifact for berlin_brandenburg
+    - name: Upload Build Artifact for ${{ matrix.region.name }}
       uses: actions/upload-artifact@v7
       with:
-        name: valhalla_tiles_berlin_brandenburg
-        path: /tmp/artifacts/valhalla_tiles_berlin_brandenburg.tar
+        name: valhalla_tiles_${{ matrix.region.name }}
+        path: /tmp/artifacts/valhalla_tiles_${{ matrix.region.name }}.tar
 
   release:
-    needs: [generate_tiles, generate_berlin_brandenburg]
+    needs: [generate_tiles]
     runs-on: ubuntu-latest
+    # Only publish to the `latest` release from main. Workflow runs on feature
+    # branches still produce artifacts (downloadable from the workflow run UI)
+    # but must not overwrite the production release.
+    if: github.ref == 'refs/heads/main'
     steps:
       - name: Download tile artifacts
         uses: actions/download-artifact@v8
@@ -242,7 +144,7 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           tag_name: latest
-          name: "Valhalla Tiles - German States (Individual Packages)"
+          name: "Valhalla Tiles - Germany + Benelux + France"
           prerelease: false
           make_latest: true
           files: |
