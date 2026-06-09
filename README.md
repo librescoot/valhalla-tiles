@@ -60,6 +60,15 @@ docker run --rm -v "$(pwd):/work" -w /work \
     --mjolnir-default-speeds-config default_speeds.json \
   > valhalla.json
 
+# Bake a per-node timezone so date_time routing can evaluate time-conditional
+# restrictions (see "Timezones" below). Brandenburg is Europe/Berlin.
+docker run --rm -v "$(pwd):/work" -w /work ghcr.io/valhalla/valhalla:3.6.3 \
+  spatialite /work/timezones.sqlite "CREATE TABLE tz_world (id INTEGER PRIMARY KEY AUTOINCREMENT, TZID TEXT);
+    SELECT AddGeometryColumn('tz_world','geom',4326,'MULTIPOLYGON',2);
+    INSERT INTO tz_world (TZID, geom) VALUES ('Europe/Berlin', CastToMulti(GeomFromText('POLYGON((-12 34,-12 60,30 60,30 34,-12 34))',4326)));
+    SELECT CreateSpatialIndex('tz_world','geom');"
+python3 -c "import json; c=json.load(open('valhalla.json')); c['mjolnir']['timezone']='/work/timezones.sqlite'; json.dump(c, open('valhalla.json','w'), indent=2)"
+
 # Build tiles. The synthetic admin overlay provides the L2 country relation
 # Valhalla needs for drive_on_right and country defaults — regional Geofabrik
 # extracts don't carry it. See admin-overlays/README.md for details.
@@ -82,6 +91,37 @@ Test changes on a small region (Bremen at 4 MB, Luxembourg at 10 MB) before runn
 
 Regenerate via `tools/build-admin-overlay.py` (requires `osmium-tool`). Country borders move ~never, so refresh only when adding a new country or doing a clean-room verification.
 
+### Timezones
+
+Valhalla bakes a timezone into each node at build time and uses it to evaluate
+time-conditional restrictions (`*:conditional` access, timed turn restrictions)
+when a `date_time` is supplied at route time. Without it, `node.administrative.time_zone_name`
+is empty and those restrictions are ignored.
+
+The upstream `valhalla_build_timezones` downloads the full timezone-boundary
+database. We don't need it: every regional extract sits in exactly one IANA zone,
+so the build generates a one-polygon `tz_world` sqlite (a West-Europe box tagged
+with the region's zone) and points `mjolnir.timezone` at it. The region → zone map
+lives in the workflow:
+
+| Region | Zone |
+|--------|------|
+| German states | `Europe/Berlin` |
+| Netherlands | `Europe/Amsterdam` |
+| Belgium | `Europe/Brussels` |
+| Luxembourg | `Europe/Luxembourg` |
+| Île-de-France | `Europe/Paris` |
+
+All five share the CET/CEST offset and EU DST rules, so restriction evaluation is
+identical across them; the distinct IANA names are kept for correctness. Adding a
+region in another zone (or one that straddles a tz boundary) means extending the
+map — or, for a straddling region, falling back to the real `valhalla_build_timezones`.
+
+Note: Valhalla canonicalizes some TZIDs through its internal tz database, so a
+Luxembourg node reports `Europe/Brussels` rather than `Europe/Luxembourg`. That's
+cosmetic — both are CET/CEST with identical DST, so the baked offset and DST
+transitions (which is all restriction evaluation uses) are correct either way.
+
 ## Automated Builds
 
 GitHub Actions generates routing tiles for all 19 regions monthly on the 1st ([workflow](.github/workflows/generate-tiles.yml)). Each region runs in parallel on a self-hosted runner using the official Valhalla Docker image. Results are published as a GitHub release tagged `latest`.
@@ -94,6 +134,7 @@ Manual trigger: Actions → "Automatic Tile Generation and Release - Germany + B
 - **Routing profiles**: motor vehicle only (bicycle and pedestrian disabled)
 - **Speed data**: [OpenStreetMapSpeeds](https://github.com/OpenStreetMapSpeeds/schema) community defaults applied via `valhalla_assign_speeds`
 - **Admin boundaries**: built from `admin-overlays/west-europe.osm.pbf` (L2 country) + regional PBF (L4/L6/L8 sub-national)
+- **Timezones**: per-node, from a one-polygon `tz_world` overlay tagged with the region's IANA zone (see Timezones above)
 - **Source**: [Geofabrik](https://download.geofabrik.de/europe/) regional extracts of [OpenStreetMap](https://www.openstreetmap.org)
 - **Generator**: [Valhalla](https://github.com/valhalla/valhalla) 3.6.3
 
