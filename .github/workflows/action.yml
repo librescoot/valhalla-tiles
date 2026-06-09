@@ -30,32 +30,12 @@ jobs:
       fail-fast: false
       matrix:
         region:
-          - { name: "baden-wuerttemberg", url: "https://download.geofabrik.de/europe/germany/baden-wuerttemberg-latest.osm.pbf" }
-          - { name: "bayern", url: "https://download.geofabrik.de/europe/germany/bayern-latest.osm.pbf" }
-          # Berlin's Geofabrik extract is fully contained in Brandenburg's
-          # (Brandenburg surrounds Berlin geographically and Geofabrik's
-          # padded bbox makes the two extracts produce identical node/way/
-          # relation sets for Berlin). Feeding both to valhalla_build_tiles
-          # creates duplicate edges for every Berlin way, exploding maneuver
-          # counts at route time. So we use just the Brandenburg PBF but
-          # label the output `berlin_brandenburg` to reflect coverage.
-          - { name: "berlin_brandenburg", url: "https://download.geofabrik.de/europe/germany/brandenburg-latest.osm.pbf" }
-          - { name: "bremen", url: "https://download.geofabrik.de/europe/germany/bremen-latest.osm.pbf" }
-          - { name: "hamburg", url: "https://download.geofabrik.de/europe/germany/hamburg-latest.osm.pbf" }
-          - { name: "hessen", url: "https://download.geofabrik.de/europe/germany/hessen-latest.osm.pbf" }
-          - { name: "mecklenburg-vorpommern", url: "https://download.geofabrik.de/europe/germany/mecklenburg-vorpommern-latest.osm.pbf" }
+          # TEMPORARY (feat/bake-timezones): trimmed for fast CI validation of the
+          # timezone bake. niedersachsen = default Europe/Berlin branch; luxembourg
+          # = non-default case branch (Europe/Luxembourg). Restore the full
+          # 19-region matrix (see git history on main) before merge.
           - { name: "niedersachsen", label: "Niedersachsen (incl. Bremen)", url: "https://download.geofabrik.de/europe/germany/niedersachsen-latest.osm.pbf" }
-          - { name: "nordrhein-westfalen", url: "https://download.geofabrik.de/europe/germany/nordrhein-westfalen-latest.osm.pbf" }
-          - { name: "rheinland-pfalz", url: "https://download.geofabrik.de/europe/germany/rheinland-pfalz-latest.osm.pbf" }
-          - { name: "saarland", url: "https://download.geofabrik.de/europe/germany/saarland-latest.osm.pbf" }
-          - { name: "sachsen", url: "https://download.geofabrik.de/europe/germany/sachsen-latest.osm.pbf" }
-          - { name: "sachsen-anhalt", url: "https://download.geofabrik.de/europe/germany/sachsen-anhalt-latest.osm.pbf" }
-          - { name: "schleswig-holstein", url: "https://download.geofabrik.de/europe/germany/schleswig-holstein-latest.osm.pbf" }
-          - { name: "thueringen", url: "https://download.geofabrik.de/europe/germany/thueringen-latest.osm.pbf" }
-          - { name: "netherlands", url: "https://download.geofabrik.de/europe/netherlands-latest.osm.pbf" }
-          - { name: "belgium", url: "https://download.geofabrik.de/europe/belgium-latest.osm.pbf" }
           - { name: "luxembourg", url: "https://download.geofabrik.de/europe/luxembourg-latest.osm.pbf" }
-          - { name: "ile-de-france", url: "https://download.geofabrik.de/europe/france/ile-de-france-latest.osm.pbf" }
     steps:
 
     - name: Checkout repository (for admin overlay)
@@ -83,6 +63,28 @@ jobs:
           --mjolnir-include-pedestrian false \
           --mjolnir-default-speeds-config $(pwd)/default_speeds.json \
           | tee valhalla.json
+
+        # Bake a per-node timezone so date_time routing can evaluate
+        # time-conditional restrictions. Each regional extract is a single IANA
+        # zone, so a one-polygon tz_world covering West Europe (tagged with this
+        # region's zone) is enough — no need for the full timezone-boundary DB.
+        case "${{ matrix.region.name }}" in
+          netherlands)   TZID="Europe/Amsterdam" ;;
+          belgium)       TZID="Europe/Brussels" ;;
+          luxembourg)    TZID="Europe/Luxembourg" ;;
+          ile-de-france) TZID="Europe/Paris" ;;
+          *)             TZID="Europe/Berlin" ;;
+        esac
+        echo "Timezone for ${{ matrix.region.name }}: $TZID"
+        tz_sqlite="$(pwd)/timezones.sqlite"
+        rm -f "$tz_sqlite"
+        spatialite "$tz_sqlite" "CREATE TABLE tz_world (id INTEGER PRIMARY KEY AUTOINCREMENT, TZID TEXT);
+        SELECT AddGeometryColumn('tz_world','geom',4326,'MULTIPOLYGON',2);
+        INSERT INTO tz_world (TZID, geom) VALUES ('$TZID', CastToMulti(GeomFromText('POLYGON((-12 34,-12 60,30 60,30 34,-12 34))',4326)));
+        SELECT CreateSpatialIndex('tz_world','geom');"
+        test "$(spatialite "$tz_sqlite" 'SELECT count(*) FROM tz_world;')" = "1" || { echo "ERROR: tz overlay build failed"; exit 1; }
+        python3 -c "import json; c=json.load(open('valhalla.json')); c['mjolnir']['timezone']='$tz_sqlite'; json.dump(c, open('valhalla.json','w'), indent=2)"
+        grep -q '"timezone": ".*timezones.sqlite"' valhalla.json || { echo "ERROR: timezone not injected into config"; exit 1; }
 
         pbf=$(basename "${{ matrix.region.url }}")
         mkdir -p /data/valhalla
