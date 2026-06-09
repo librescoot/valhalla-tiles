@@ -30,12 +30,32 @@ jobs:
       fail-fast: false
       matrix:
         region:
-          # TEMPORARY (feat/bake-timezones): trimmed for fast CI validation of the
-          # timezone bake. niedersachsen = default Europe/Berlin branch; luxembourg
-          # = non-default case branch (Europe/Luxembourg). Restore the full
-          # 19-region matrix (see git history on main) before merge.
+          - { name: "baden-wuerttemberg", url: "https://download.geofabrik.de/europe/germany/baden-wuerttemberg-latest.osm.pbf" }
+          - { name: "bayern", url: "https://download.geofabrik.de/europe/germany/bayern-latest.osm.pbf" }
+          # Berlin's Geofabrik extract is fully contained in Brandenburg's
+          # (Brandenburg surrounds Berlin geographically and Geofabrik's
+          # padded bbox makes the two extracts produce identical node/way/
+          # relation sets for Berlin). Feeding both to valhalla_build_tiles
+          # creates duplicate edges for every Berlin way, exploding maneuver
+          # counts at route time. So we use just the Brandenburg PBF but
+          # label the output `berlin_brandenburg` to reflect coverage.
+          - { name: "berlin_brandenburg", url: "https://download.geofabrik.de/europe/germany/brandenburg-latest.osm.pbf" }
+          - { name: "bremen", url: "https://download.geofabrik.de/europe/germany/bremen-latest.osm.pbf" }
+          - { name: "hamburg", url: "https://download.geofabrik.de/europe/germany/hamburg-latest.osm.pbf" }
+          - { name: "hessen", url: "https://download.geofabrik.de/europe/germany/hessen-latest.osm.pbf" }
+          - { name: "mecklenburg-vorpommern", url: "https://download.geofabrik.de/europe/germany/mecklenburg-vorpommern-latest.osm.pbf" }
           - { name: "niedersachsen", label: "Niedersachsen (incl. Bremen)", url: "https://download.geofabrik.de/europe/germany/niedersachsen-latest.osm.pbf" }
+          - { name: "nordrhein-westfalen", url: "https://download.geofabrik.de/europe/germany/nordrhein-westfalen-latest.osm.pbf" }
+          - { name: "rheinland-pfalz", url: "https://download.geofabrik.de/europe/germany/rheinland-pfalz-latest.osm.pbf" }
+          - { name: "saarland", url: "https://download.geofabrik.de/europe/germany/saarland-latest.osm.pbf" }
+          - { name: "sachsen", url: "https://download.geofabrik.de/europe/germany/sachsen-latest.osm.pbf" }
+          - { name: "sachsen-anhalt", url: "https://download.geofabrik.de/europe/germany/sachsen-anhalt-latest.osm.pbf" }
+          - { name: "schleswig-holstein", url: "https://download.geofabrik.de/europe/germany/schleswig-holstein-latest.osm.pbf" }
+          - { name: "thueringen", url: "https://download.geofabrik.de/europe/germany/thueringen-latest.osm.pbf" }
+          - { name: "netherlands", url: "https://download.geofabrik.de/europe/netherlands-latest.osm.pbf" }
+          - { name: "belgium", url: "https://download.geofabrik.de/europe/belgium-latest.osm.pbf" }
           - { name: "luxembourg", url: "https://download.geofabrik.de/europe/luxembourg-latest.osm.pbf" }
+          - { name: "ile-de-france", url: "https://download.geofabrik.de/europe/france/ile-de-france-latest.osm.pbf" }
     steps:
 
     - name: Checkout repository (for admin overlay)

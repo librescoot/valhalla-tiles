@@ -117,6 +117,11 @@ identical across them; the distinct IANA names are kept for correctness. Adding 
 region in another zone (or one that straddles a tz boundary) means extending the
 map — or, for a straddling region, falling back to the real `valhalla_build_timezones`.
 
+Note: Valhalla canonicalizes some TZIDs through its internal tz database, so a
+Luxembourg node reports `Europe/Brussels` rather than `Europe/Luxembourg`. That's
+cosmetic — both are CET/CEST with identical DST, so the baked offset and DST
+transitions (which is all restriction evaluation uses) are correct either way.
+
 ## Automated Builds
 
 GitHub Actions generates routing tiles for all 19 regions monthly on the 1st ([workflow](.github/workflows/generate-tiles.yml)). Each region runs in parallel on a self-hosted runner using the official Valhalla Docker image. Results are published as a GitHub release tagged `latest`.
