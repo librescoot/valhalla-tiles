@@ -13,7 +13,7 @@ regardless of the actual exit count.
 
 ## `west-europe.osm.pbf`
 
-Hand-built polygons for DE/FR/NL/BE/LU, generated from Natural Earth 1:50m
+Hand-built polygons for DE/FR/NL/BE/LU/IT, generated from Natural Earth 1:50m
 country boundaries. ~10 KB total. Each country gets a relation tagged with
 the right `ISO3166-1` code; Valhalla reads `drive_on_right=1` and the
 country's default speed table from there.

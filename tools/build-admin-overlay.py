@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Build a synthetic admin overlay PBF for valhalla_build_admins.
 
-Fetches Natural Earth 1:50m country boundaries for DE/FR/NL/BE/LU, clips them
-to the European bounding box (drops overseas territories), and emits an OSM
-PBF containing one admin_level=2 relation per country with the correct
+Fetches Natural Earth 1:50m country boundaries for DE/FR/NL/BE/LU/IT, clips
+them to the European bounding box (drops overseas territories), and emits an
+OSM PBF containing one admin_level=2 relation per country with the correct
 ISO3166-1 codes. Valhalla picks up drive_on_right and country-specific
 defaults (motorway speeds, etc.) from those tags.
 
@@ -47,6 +47,7 @@ COUNTRIES = {
     "NL": "Netherlands",
     "BE": "Belgium",
     "LU": "Luxembourg",
+    "IT": "Italia",
 }
 
 # European bounding box used to strip overseas territories (French Guiana,

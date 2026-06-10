@@ -6,7 +6,7 @@ Part of the [Librescoot](https://librescoot.org/) open-source platform.
 
 ## Generated Files
 
-Monthly CI builds produce one `.tar` file per region. German states use per-state extracts; Benelux uses country-level extracts; France is added at region granularity (just Île-de-France for now). Berlin and Brandenburg are combined into a single package — the Geofabrik Brandenburg extract is a superset of Berlin, so feeding both files to `valhalla_build_tiles` would produce duplicate edges.
+Monthly CI builds produce one `.tar` file per region. German states use per-state extracts; Benelux uses country-level extracts; France is added at region granularity (just Île-de-France for now); Italy uses Geofabrik's macro-area extracts (Nord-Ovest covers Lombardy plus Piedmont, Liguria and Aosta Valley — Geofabrik offers no per-regione extracts). Berlin and Brandenburg are combined into a single package — the Geofabrik Brandenburg extract is a superset of Berlin, so feeding both files to `valhalla_build_tiles` would produce duplicate edges.
 
 | Region | Approx. Size |
 |--------|-------------|
@@ -18,6 +18,7 @@ Monthly CI builds produce one `.tar` file per region. German states use per-stat
 | `valhalla_tiles_hamburg.tar` | 10 MB |
 | `valhalla_tiles_hessen.tar` | 90 MB |
 | `valhalla_tiles_ile-de-france.tar` | 59 MB |
+| `valhalla_tiles_italy-nord-ovest.tar` | first build pending |
 | `valhalla_tiles_luxembourg.tar` | 10 MB |
 | `valhalla_tiles_mecklenburg-vorpommern.tar` | 28 MB |
 | `valhalla_tiles_netherlands.tar` | 191 MB |
@@ -32,7 +33,7 @@ Monthly CI builds produce one `.tar` file per region. German states use per-stat
 
 Sizes are from the most recent release and vary slightly between builds as OSM data changes.
 
-German state sizes dropped substantially in the build that landed alongside the Benelux+France expansion. The previous workflow bundled the shared admin SQLite (built from full `germany-latest.osm.pbf`, containing every L4/L6/L8/L9 polygon in Germany) into every state `.tar`. The current workflow uses a tiny `admin-overlays/west-europe.osm.pbf` (~10 KB of country-level L2 polygons for DE/FR/NL/BE/LU) instead — admin attributes are baked per-edge during `valhalla_build_tiles`, so the source admin DB isn't needed at runtime.
+German state sizes dropped substantially in the build that landed alongside the Benelux+France expansion. The previous workflow bundled the shared admin SQLite (built from full `germany-latest.osm.pbf`, containing every L4/L6/L8/L9 polygon in Germany) into every state `.tar`. The current workflow uses a tiny `admin-overlays/west-europe.osm.pbf` (~10 KB of country-level L2 polygons for DE/FR/NL/BE/LU/IT) instead — admin attributes are baked per-edge during `valhalla_build_tiles`, so the source admin DB isn't needed at runtime.
 
 ## Installation
 
@@ -87,7 +88,7 @@ Test changes on a small region (Bremen at 4 MB, Luxembourg at 10 MB) before runn
 
 ### Admin Overlay
 
-`admin-overlays/west-europe.osm.pbf` is a tiny (~10 KB) synthetic PBF carrying L2 country polygons for DE/FR/NL/BE/LU with the right `ISO3166-1` codes. Passed to `valhalla_build_admins` alongside any regional PBF, it gives Valhalla the country attribution it needs without downloading the full country PBF (5 GB for Germany, 1.5 GB for France).
+`admin-overlays/west-europe.osm.pbf` is a tiny (~10 KB) synthetic PBF carrying L2 country polygons for DE/FR/NL/BE/LU/IT with the right `ISO3166-1` codes. Passed to `valhalla_build_admins` alongside any regional PBF, it gives Valhalla the country attribution it needs without downloading the full country PBF (5 GB for Germany, 1.5 GB for France).
 
 Regenerate via `tools/build-admin-overlay.py` (requires `osmium-tool`). Country borders move ~never, so refresh only when adding a new country or doing a clean-room verification.
 
@@ -111,8 +112,9 @@ lives in the workflow:
 | Belgium | `Europe/Brussels` |
 | Luxembourg | `Europe/Luxembourg` |
 | Île-de-France | `Europe/Paris` |
+| Italy Nord-Ovest | `Europe/Rome` |
 
-All five share the CET/CEST offset and EU DST rules, so restriction evaluation is
+All six share the CET/CEST offset and EU DST rules, so restriction evaluation is
 identical across them; the distinct IANA names are kept for correctness. Adding a
 region in another zone (or one that straddles a tz boundary) means extending the
 map — or, for a straddling region, falling back to the real `valhalla_build_timezones`.
@@ -124,9 +126,9 @@ transitions (which is all restriction evaluation uses) are correct either way.
 
 ## Automated Builds
 
-GitHub Actions generates routing tiles for all 19 regions monthly on the 1st ([workflow](.github/workflows/generate-tiles.yml)). Each region runs in parallel on a self-hosted runner using the official Valhalla Docker image. Results are published as a GitHub release tagged `latest`.
+GitHub Actions generates routing tiles for all 20 regions monthly on the 1st ([workflow](.github/workflows/generate-tiles.yml)). Each region runs in parallel on a self-hosted runner using the official Valhalla Docker image. Results are published as a GitHub release tagged `latest`.
 
-Manual trigger: Actions → "Automatic Tile Generation and Release - Germany + Benelux + France" → Run workflow.
+Manual trigger: Actions → "Automatic Tile Generation and Release - Germany + Benelux + France + Italy" → Run workflow.
 
 ## Technical Details
 

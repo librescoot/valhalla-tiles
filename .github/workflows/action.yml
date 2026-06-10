@@ -1,4 +1,4 @@
-name: Automatic Tile Generation and Release - Germany + Benelux + France
+name: Automatic Tile Generation and Release - Germany + Benelux + France + Italy
 
 permissions:
   contents: write
@@ -56,6 +56,10 @@ jobs:
           - { name: "belgium", url: "https://download.geofabrik.de/europe/belgium-latest.osm.pbf" }
           - { name: "luxembourg", url: "https://download.geofabrik.de/europe/luxembourg-latest.osm.pbf" }
           - { name: "ile-de-france", url: "https://download.geofabrik.de/europe/france/ile-de-france-latest.osm.pbf" }
+          # Geofabrik has no per-regione Italian extracts; nord-ovest is the
+          # smallest extract covering Lombardy (also includes Piedmont,
+          # Liguria, Aosta Valley).
+          - { name: "italy-nord-ovest", label: "Nord-Ovest (incl. Lombardy)", url: "https://download.geofabrik.de/europe/italy/nord-ovest-latest.osm.pbf" }
     steps:
 
     - name: Checkout repository (for admin overlay)
@@ -93,6 +97,7 @@ jobs:
           belgium)       TZID="Europe/Brussels" ;;
           luxembourg)    TZID="Europe/Luxembourg" ;;
           ile-de-france) TZID="Europe/Paris" ;;
+          italy-*)       TZID="Europe/Rome" ;;
           *)             TZID="Europe/Berlin" ;;
         esac
         echo "Timezone for ${{ matrix.region.name }}: $TZID"
@@ -166,7 +171,7 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           tag_name: latest
-          name: "Valhalla Tiles - Germany + Benelux + France"
+          name: "Valhalla Tiles - Germany + Benelux + France + Italy"
           prerelease: false
           make_latest: true
           files: |
