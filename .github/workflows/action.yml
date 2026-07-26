@@ -287,18 +287,28 @@ jobs:
             artifacts/**/*.tar
             artifacts/**/*.vtiledelta
 
-      - name: Create versioned release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Compute version for versioned release
+        id: version
         run: |
-          VER=$(date +%Y-%m)
-          TITLE="Valhalla Tiles - $(date '+%B %Y')"
-          NOTES="Versioned snapshot for delta updates. Deltas are relative to the previous version tag."
-          FILES=$(find artifacts -type f \( -name '*.tar' -o -name '*.vtiledelta' \))
-          # On a re-run within the same month the tag/release already exists;
-          # fall back to overwriting its assets.
-          gh release create "$VER" --title "$TITLE" --notes "$NOTES" $FILES \
-            || gh release upload "$VER" --clobber $FILES
+          echo "ver=$(date +%Y-%m)" >> "$GITHUB_OUTPUT"
+          echo "month=$(date '+%B %Y')" >> "$GITHUB_OUTPUT"
+
+      - name: Create versioned release
+        uses: softprops/action-gh-release@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ steps.version.outputs.ver }}
+          name: "Valhalla Tiles - ${{ steps.version.outputs.month }}"
+          body: "Versioned snapshot for delta updates. Deltas are relative to the previous version tag."
+          prerelease: false
+          # The rolling `latest` tag must keep GitHub's Latest badge.
+          make_latest: false
+          # Same-month re-runs: the action updates the existing release and
+          # overwrites same-named assets by default.
+          files: |
+            artifacts/**/*.tar
+            artifacts/**/*.vtiledelta
 
       - name: Generate app token for downloads rebuild
         id: app-token
