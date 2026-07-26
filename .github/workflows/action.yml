@@ -148,8 +148,111 @@ jobs:
         name: valhalla_tiles_${{ matrix.region.name }}
         path: /tmp/artifacts/valhalla_tiles_${{ matrix.region.name }}.tar
 
-  release:
+  # Build xdelta3 deltas (.vtiledelta) of each region's fresh tiles against
+  # the same region's asset in the previous monthly version-tag release
+  # (e.g. 2026-06). Embedded devices can then download a small delta instead
+  # of the full tile tarball. Regions without a previous asset (new regions,
+  # or no previous version tag yet) are skipped gracefully.
+  delta:
     needs: [generate_tiles]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        region:
+          - "baden-wuerttemberg"
+          - "bayern"
+          - "berlin_brandenburg"
+          - "bremen"
+          - "hamburg"
+          - "hessen"
+          - "mecklenburg-vorpommern"
+          - "niedersachsen"
+          - "nordrhein-westfalen"
+          - "rheinland-pfalz"
+          - "saarland"
+          - "sachsen"
+          - "sachsen-anhalt"
+          - "schleswig-holstein"
+          - "thueringen"
+          - "netherlands"
+          - "belgium"
+          - "luxembourg"
+          - "ile-de-france"
+          - "italy-nord-ovest"
+    steps:
+      - name: Checkout repository (for tools/create-tile-delta.sh)
+        uses: actions/checkout@v4
+
+      - name: Install delta tooling
+        run: sudo apt-get install -y xdelta3 jq
+
+      - name: Download tile artifact for ${{ matrix.region }}
+        uses: actions/download-artifact@v4
+        with:
+          name: valhalla_tiles_${{ matrix.region }}
+
+      - name: Determine previous version tag
+        id: prev
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          CUR=$(date +%Y-%m)
+          echo "cur=$CUR" >> "$GITHUB_OUTPUT"
+          # Version tags look like YYYY-MM; string comparison sorts them
+          # correctly. Take the newest tag strictly older than this month.
+          PREV=$(gh api repos/${{ github.repository }}/tags --jq '.[].name' \
+            | grep -E '^[0-9]{4}-[0-9]{2}$' \
+            | sort -r \
+            | awk -v cur="$CUR" '$0 < cur' \
+            | head -n1 || true)
+          if [[ -z "$PREV" ]]; then
+            echo "::notice::No version tag older than $CUR found; skipping delta for ${{ matrix.region }}"
+            echo "made=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Previous version tag: $PREV (current: $CUR)"
+            echo "prev=$PREV" >> "$GITHUB_OUTPUT"
+            echo "made=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Download base asset from previous release
+        id: base
+        if: steps.prev.outputs.made == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p base
+          if gh release download "${{ steps.prev.outputs.prev }}" \
+              --pattern "valhalla_tiles_${{ matrix.region }}.tar" \
+              --dir base/; then
+            echo "made=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::Asset valhalla_tiles_${{ matrix.region }}.tar not found in release ${{ steps.prev.outputs.prev }} (new region?); skipping delta"
+            echo "made=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create delta for ${{ matrix.region }}
+        id: delta
+        if: steps.prev.outputs.made == 'true' && steps.base.outputs.made == 'true'
+        run: |
+          PREV="${{ steps.prev.outputs.prev }}"
+          CUR="${{ steps.prev.outputs.cur }}"
+          tools/create-tile-delta.sh \
+            "base/valhalla_tiles_${{ matrix.region }}.tar" \
+            "valhalla_tiles_${{ matrix.region }}.tar" \
+            "$PREV" "$CUR" \
+            "valhalla_tiles_${{ matrix.region }}_${PREV}_to_${CUR}.vtiledelta"
+          echo "made=true" >> "$GITHUB_OUTPUT"
+
+      - name: Upload delta artifact for ${{ matrix.region }}
+        if: steps.delta.outputs.made == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: vtiledelta_${{ matrix.region }}
+          path: valhalla_tiles_${{ matrix.region }}_${{ steps.prev.outputs.prev }}_to_${{ steps.prev.outputs.cur }}.vtiledelta
+
+  release:
+    needs: [generate_tiles, delta]
     runs-on: ubuntu-latest
     # Only publish to the `latest` release from main. Workflow runs on feature
     # branches still produce artifacts (downloadable from the workflow run UI)
@@ -162,10 +265,16 @@ jobs:
           path: artifacts
           pattern: valhalla_tiles_*
 
+      - name: Download delta artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          pattern: vtiledelta_*
+
       - name: List All Artifacts
         run: |
           echo "Listing all downloaded artifacts:"
-          find artifacts -name "*.tar" -type f
+          find artifacts -type f \( -name "*.tar" -o -name "*.vtiledelta" \)
 
       - name: Create Automatic Release
         uses: softprops/action-gh-release@v3
@@ -176,6 +285,20 @@ jobs:
           make_latest: true
           files: |
             artifacts/**/*.tar
+            artifacts/**/*.vtiledelta
+
+      - name: Create versioned release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VER=$(date +%Y-%m)
+          TITLE="Valhalla Tiles - $(date '+%B %Y')"
+          NOTES="Versioned snapshot for delta updates. Deltas are relative to the previous version tag."
+          FILES=$(find artifacts -type f \( -name '*.tar' -o -name '*.vtiledelta' \))
+          # On a re-run within the same month the tag/release already exists;
+          # fall back to overwriting its assets.
+          gh release create "$VER" --title "$TITLE" --notes "$NOTES" $FILES \
+            || gh release upload "$VER" --clobber $FILES
 
       - name: Generate app token for downloads rebuild
         id: app-token
