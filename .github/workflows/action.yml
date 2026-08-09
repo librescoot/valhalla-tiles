@@ -154,11 +154,24 @@ jobs:
         chmod 666 /tmp/artifacts/valhalla_tiles_${{ matrix.region.name }}.tar
         ls -la /tmp/artifacts/
 
+    - name: Compress tiles for ${{ matrix.region.name }}
+      run: |
+        command -v zstd >/dev/null 2>&1 || { apt-get update && apt-get install -y zstd; }
+        # Level 19 without --long: the DBC decoder window stays at 8 MB, which
+        # matters on a 1 GB board, and --long buys ~0.1 MB for twice the time.
+        zstd -19 -T0 -q --force \
+          -o /tmp/artifacts/valhalla_tiles_${{ matrix.region.name }}.tar.zst \
+          /tmp/artifacts/valhalla_tiles_${{ matrix.region.name }}.tar
+        chmod 666 /tmp/artifacts/valhalla_tiles_${{ matrix.region.name }}.tar.zst
+        ls -la /tmp/artifacts/
+
     - name: Upload Build Artifact for ${{ matrix.region.name }}
       uses: actions/upload-artifact@v7
       with:
         name: valhalla_tiles_${{ matrix.region.name }}
-        path: /tmp/artifacts/valhalla_tiles_${{ matrix.region.name }}.tar
+        path: |
+          /tmp/artifacts/valhalla_tiles_${{ matrix.region.name }}.tar
+          /tmp/artifacts/valhalla_tiles_${{ matrix.region.name }}.tar.zst
 
   release:
     needs: [generate_tiles]
@@ -177,7 +190,7 @@ jobs:
       - name: List All Artifacts
         run: |
           echo "Listing all downloaded artifacts:"
-          find artifacts -name "*.tar" -type f
+          find artifacts \( -name "*.tar" -o -name "*.tar.zst" \) -type f
 
       - name: Create Automatic Release
         uses: softprops/action-gh-release@v3
@@ -188,6 +201,7 @@ jobs:
           make_latest: true
           files: |
             artifacts/**/*.tar
+            artifacts/**/*.tar.zst
 
       - name: Generate app token for downloads rebuild
         id: app-token
