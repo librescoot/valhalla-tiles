@@ -10,30 +10,30 @@ Monthly CI builds produce one `.tar` file per region. German states use per-stat
 
 | Region | Approx. Size |
 |--------|-------------|
-| `valhalla_tiles_baden-wuerttemberg.tar` | 174 MB |
-| `valhalla_tiles_bayern.tar` | 257 MB |
-| `valhalla_tiles_belgium.tar` | 132 MB |
-| `valhalla_tiles_berlin_brandenburg.tar` | 69 MB |
-| `valhalla_tiles_bremen.tar` | 4 MB |
-| `valhalla_tiles_hamburg.tar` | 10 MB |
-| `valhalla_tiles_hessen.tar` | 90 MB |
-| `valhalla_tiles_ile-de-france.tar` | 59 MB |
-| `valhalla_tiles_italy-nord-ovest.tar` | first build pending |
-| `valhalla_tiles_luxembourg.tar` | 10 MB |
-| `valhalla_tiles_mecklenburg-vorpommern.tar` | 28 MB |
-| `valhalla_tiles_netherlands.tar` | 191 MB |
-| `valhalla_tiles_niedersachsen.tar` | 123 MB |
-| `valhalla_tiles_nordrhein-westfalen.tar` | 183 MB |
-| `valhalla_tiles_rheinland-pfalz.tar` | 76 MB |
-| `valhalla_tiles_saarland.tar` | 11 MB |
-| `valhalla_tiles_sachsen.tar` | 68 MB |
-| `valhalla_tiles_sachsen-anhalt.tar` | 39 MB |
-| `valhalla_tiles_schleswig-holstein.tar` | 37 MB |
-| `valhalla_tiles_thueringen.tar` | 43 MB |
+| `valhalla_tiles_baden-wuerttemberg.tar` | 485 MB |
+| `valhalla_tiles_bayern.tar` | 725 MB |
+| `valhalla_tiles_belgium.tar` | 364 MB |
+| `valhalla_tiles_berlin_brandenburg.tar` | 202 MB |
+| `valhalla_tiles_bremen.tar` | 13 MB |
+| `valhalla_tiles_hamburg.tar` | 30 MB |
+| `valhalla_tiles_hessen.tar` | 247 MB |
+| `valhalla_tiles_ile-de-france.tar` | 167 MB |
+| `valhalla_tiles_italy-nord-ovest.tar` | 419 MB |
+| `valhalla_tiles_luxembourg.tar` | 27 MB |
+| `valhalla_tiles_mecklenburg-vorpommern.tar` | 79 MB |
+| `valhalla_tiles_netherlands.tar` | 546 MB |
+| `valhalla_tiles_niedersachsen.tar` | 353 MB |
+| `valhalla_tiles_nordrhein-westfalen.tar` | 514 MB |
+| `valhalla_tiles_rheinland-pfalz.tar` | 206 MB |
+| `valhalla_tiles_saarland.tar` | 31 MB |
+| `valhalla_tiles_sachsen-anhalt.tar` | 107 MB |
+| `valhalla_tiles_sachsen.tar` | 192 MB |
+| `valhalla_tiles_schleswig-holstein.tar` | 106 MB |
+| `valhalla_tiles_thueringen.tar` | 117 MB |
 
-Sizes are from the most recent release and vary slightly between builds as OSM data changes.
+Sizes are decimal MB from the 2026-08-09 release and vary between builds as OSM data changes.
 
-German state sizes dropped substantially in the build that landed alongside the Benelux+France expansion. The previous workflow bundled the shared admin SQLite (built from full `germany-latest.osm.pbf`, containing every L4/L6/L8/L9 polygon in Germany) into every state `.tar`. The current workflow uses a tiny `admin-overlays/west-europe.osm.pbf` (~10 KB of country-level L2 polygons for DE/FR/NL/BE/LU/IT) instead — admin attributes are baked per-edge during `valhalla_build_tiles`, so the source admin DB isn't needed at runtime.
+Admin boundaries come from a tiny `admin-overlays/west-europe.osm.pbf` (~10 KB of country-level L2 polygons for DE/FR/NL/BE/LU/IT) rather than a shared admin SQLite built from the full `germany-latest.osm.pbf`. Admin attributes are baked per-edge during `valhalla_build_tiles`, so the source admin DB isn't needed at runtime and never ships inside a regional `.tar`.
 
 ## Installation
 
@@ -90,7 +90,7 @@ docker run --rm -v "$(pwd):/work" -w /work \
 
 Output lands in `/data/valhalla/tiles.tar` by default.
 
-Test changes on a small region (Bremen at 4 MB, Luxembourg at 10 MB) before running the full set.
+Test changes on a small region (Bremen at 13 MB, Luxembourg at 27 MB) before running the full set.
 
 ### Admin Overlay
 
