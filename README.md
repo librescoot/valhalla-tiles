@@ -70,6 +70,12 @@ docker run --rm -v "$(pwd):/work" -w /work ghcr.io/valhalla/valhalla:3.6.3 \
     SELECT CreateSpatialIndex('tz_world','geom');"
 python3 -c "import json; c=json.load(open('valhalla.json')); c['mjolnir']['timezone']='/work/timezones.sqlite'; json.dump(c, open('valhalla.json','w'), indent=2)"
 
+# Classify cobbles as their own surface (see "Surfaces" below).
+wget -q -O upstream-graph.lua \
+  https://raw.githubusercontent.com/valhalla/valhalla/3.6.3/lua/graph.lua
+cat upstream-graph.lua lua/librescoot-surface.lua > graph-librescoot.lua
+python3 -c "import json; c=json.load(open('valhalla.json')); c['mjolnir']['graph_lua_name']='/work/graph-librescoot.lua'; json.dump(c, open('valhalla.json','w'), indent=2)"
+
 # Build tiles. The synthetic admin overlay provides the L2 country relation
 # Valhalla needs for drive_on_right and country defaults — regional Geofabrik
 # extracts don't carry it. See admin-overlays/README.md for details.
@@ -138,7 +144,32 @@ Manual trigger: Actions → "Automatic Tile Generation and Release - Germany + B
 - **Admin boundaries**: built from `admin-overlays/west-europe.osm.pbf` (L2 country) + regional PBF (L4/L6/L8 sub-national)
 - **Timezones**: per-node, from a one-polygon `tz_world` overlay tagged with the region's IANA zone (see Timezones above)
 - **Source**: [Geofabrik](https://download.geofabrik.de/europe/) regional extracts of [OpenStreetMap](https://www.openstreetmap.org)
+- **Surfaces**: `lua/librescoot-surface.lua` (see below)
 - **Generator**: [Valhalla](https://github.com/valhalla/valhalla) 3.6.3
+
+## Surfaces
+
+Valhalla's tile format has eight surface classes and no free slot, so these tiles
+reserve one. `lua/librescoot-surface.lua` is appended to upstream `lua/graph.lua`
+and fed to `valhalla_build_tiles` through `mjolnir.graph_lua_name`. It wraps
+`ways_proc` rather than patching it, so a Valhalla bump needs a fresh `graph.lua`
+rather than a rebased diff.
+
+What it changes:
+
+- `sett`, `cobblestone`, `unhewn_cobblestone`, `cobblestone:flattened`,
+  `paving_stones` and `grass_paver` all become `paved_rough`. Upstream puts sett
+  and paving stones in the same class as asphalt, which makes most German
+  Kopfsteinpflaster invisible to routing: 258 of the 939 surface-tagged streets
+  around Boxhagener Platz are tagged `sett`.
+- With no `surface` tag, `smoothness=intermediate` and `tracktype=grade1` become
+  `compacted` instead of `paved_rough`. Neither describes stone, and the OSM wiki
+  gives "the best unpaved but compacted roads" as its own example for
+  `intermediate`.
+
+So in these tiles `paved_rough` means irregular stone and `compacted` means
+smooth but unpaved, which lets a costing weigh them separately. Small wheels care
+about the difference. Nothing else in the graph changes.
 
 ## License
 

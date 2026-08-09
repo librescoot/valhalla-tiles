@@ -111,6 +111,18 @@ jobs:
         python3 -c "import json; c=json.load(open('valhalla.json')); c['mjolnir']['timezone']='$tz_sqlite'; json.dump(c, open('valhalla.json','w'), indent=2)"
         grep -q '"timezone": ".*timezones.sqlite"' valhalla.json || { echo "ERROR: timezone not injected into config"; exit 1; }
 
+        # Classify sett and cobblestone as their own surface so the scooter
+        # costing can weigh them. Valhalla lumps sett and paving stones in with
+        # asphalt, which makes Kopfsteinpflaster invisible to routing. Our
+        # overlay wraps ways_proc rather than patching it, so a Valhalla bump
+        # only needs a fresh graph.lua here, not a rebased diff.
+        wget -q -O upstream-graph.lua \
+          https://raw.githubusercontent.com/valhalla/valhalla/3.6.3/lua/graph.lua
+        cat upstream-graph.lua lua/librescoot-surface.lua > graph-librescoot.lua
+        graph_lua="$(pwd)/graph-librescoot.lua"
+        python3 -c "import json; c=json.load(open('valhalla.json')); c['mjolnir']['graph_lua_name']='$graph_lua'; json.dump(c, open('valhalla.json','w'), indent=2)"
+        grep -q '"graph_lua_name": ".*graph-librescoot.lua"' valhalla.json || { echo "ERROR: graph lua not injected into config"; exit 1; }
+
         pbf=$(basename "${{ matrix.region.url }}")
         mkdir -p /data/valhalla
 
