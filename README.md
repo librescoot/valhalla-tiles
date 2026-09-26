@@ -6,21 +6,21 @@ Part of the [Librescoot](https://librescoot.org/) open-source platform.
 
 ## Generated Files
 
-Monthly CI builds produce one `.tar` file per region. German states use per-state extracts; Benelux uses country-level extracts; France uses regional extracts (Île-de-France and Alsace); Mallorca is covered by the Islas Baleares extract; Graz and Vienna are clipped from Geofabrik's Austria extract to keep the published tiles small; Italy uses Geofabrik's macro-area extracts (Nord-Ovest covers Lombardy plus Piedmont, Liguria and Aosta Valley — Geofabrik offers no per-regione extracts). Berlin and Brandenburg are combined into a single package — the Geofabrik Brandenburg extract is a superset of Berlin, so feeding both files to `valhalla_build_tiles` would produce duplicate edges.
+Monthly CI builds produce one `.tar` file per region. German states use per-state extracts; Benelux uses country-level extracts; France uses regional extracts (Île-de-France and Alsace); Mallorca is covered by the Islas Baleares extract; Graz and Vienna are clipped from Geofabrik's Austria extract; Kanton Zürich is clipped from Geofabrik's Switzerland extract with an approximately 20 km buffer (within Switzerland); Italy uses Geofabrik's macro-area extracts (Nord-Ovest covers Lombardy plus Piedmont, Liguria and Aosta Valley — Geofabrik offers no per-regione extracts). Berlin and Brandenburg are combined into a single package — the Geofabrik Brandenburg extract is a superset of Berlin, so feeding both files to `valhalla_build_tiles` would produce duplicate edges.
 
 | Region | Approx. Size |
 |--------|-------------|
-| `valhalla_tiles_alsace.tar` | first build pending |
+| `valhalla_tiles_alsace.tar` | 78 MB |
 | `valhalla_tiles_baden-wuerttemberg.tar` | 485 MB |
 | `valhalla_tiles_bayern.tar` | 725 MB |
 | `valhalla_tiles_belgium.tar` | 364 MB |
 | `valhalla_tiles_berlin_brandenburg.tar` | 202 MB |
 | `valhalla_tiles_bremen.tar` | 13 MB |
 | `valhalla_tiles_hamburg.tar` | 30 MB |
-| `valhalla_tiles_graz.tar` | first build pending |
+| `valhalla_tiles_graz.tar` | 26 MB |
 | `valhalla_tiles_hessen.tar` | 247 MB |
 | `valhalla_tiles_ile-de-france.tar` | 167 MB |
-| `valhalla_tiles_islas-baleares.tar` | first build pending |
+| `valhalla_tiles_islas-baleares.tar` | 38 MB |
 | `valhalla_tiles_italy-nord-ovest.tar` | 419 MB |
 | `valhalla_tiles_luxembourg.tar` | 27 MB |
 | `valhalla_tiles_mecklenburg-vorpommern.tar` | 79 MB |
@@ -33,13 +33,14 @@ Monthly CI builds produce one `.tar` file per region. German states use per-stat
 | `valhalla_tiles_sachsen.tar` | 192 MB |
 | `valhalla_tiles_schleswig-holstein.tar` | 106 MB |
 | `valhalla_tiles_thueringen.tar` | 117 MB |
-| `valhalla_tiles_vienna.tar` | first build pending |
+| `valhalla_tiles_vienna.tar` | 33 MB |
+| `valhalla_tiles_zurich.tar` | first build pending |
 
 Sizes are decimal MB from the 2026-08-09 release and vary between builds as OSM data changes.
 
 Every release also carries a `valhalla_tiles_<region>.tar.zst` next to each `.tar`, the same archive compressed with `zstd -19` (no `--long`, so the decoder window stays at 8 MB, which a 1 GB DBC appreciates). It is there to cut what a vehicle pulls over cellular: the dashboard downloads it in preference to the plain tar whenever a release offers one, and USB update mode takes it too. Either way the decompression happens on the DBC. What ends up in `/data/valhalla/tiles.tar` is always the plain seekable tar, because Valhalla mmaps it as its `tile_extract`.
 
-Admin boundaries come from a tiny `admin-overlays/west-europe.osm.pbf` (~18 KB of country-level L2 polygons for DE/FR/NL/BE/LU/IT/ES/AT) rather than a shared admin SQLite built from the full `germany-latest.osm.pbf`. Admin attributes are baked per-edge during `valhalla_build_tiles`, so the source admin DB isn't needed at runtime and never ships inside a regional `.tar`.
+Admin boundaries come from a tiny `admin-overlays/west-europe.osm.pbf` (~19 KB of country-level L2 polygons for DE/FR/NL/BE/LU/IT/ES/AT/CH) rather than a shared admin SQLite built from the full `germany-latest.osm.pbf`. Admin attributes are baked per-edge during `valhalla_build_tiles`, so the source admin DB isn't needed at runtime and never ships inside a regional `.tar`.
 
 ## Installation
 

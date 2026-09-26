@@ -1,4 +1,4 @@
-name: Automatic Tile Generation and Release - Germany + Benelux + France + Italy + Spain + Austria
+name: Automatic Tile Generation and Release - Germany + Benelux + France + Italy + Spain + Austria + Switzerland
 
 permissions:
   contents: write
@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
     inputs:
       regions:
-        description: "all or comma-separated region IDs (e.g. alsace,islas-baleares,graz,vienna)"
+        description: "all or comma-separated region IDs (e.g. alsace,islas-baleares,graz,vienna,zurich)"
         required: true
         type: string
         default: all
@@ -21,6 +21,7 @@ jobs:
       regions: ${{ steps.choose.outputs.regions }}
       count: ${{ steps.choose.outputs.count }}
       needs_austria: ${{ steps.choose.outputs.needs_austria }}
+      needs_switzerland: ${{ steps.choose.outputs.needs_switzerland }}
     steps:
       - uses: actions/checkout@v4
       - name: Select regions for this run
@@ -46,6 +47,7 @@ jobs:
           print('regions=' + json.dumps(regions, separators=(',', ':')))
           print('count=' + str(len(regions)))
           print('needs_austria=' + str(any(r['name'] in ('graz', 'vienna') for r in regions)).lower())
+          print('needs_switzerland=' + str(any(r['name'] == 'zurich' for r in regions)).lower())
           PY
 
   prepare_austria:
@@ -95,9 +97,44 @@ jobs:
   # right ISO3166-1 codes. See tools/build-admin-overlay.py to regenerate.
   # This replaces the previous pattern of downloading germany-latest.osm.pbf
   # (5 GB) in a separate generate_admins job and sharing via artifact.
+  prepare_switzerland:
+    needs: select_regions
+    if: needs.select_regions.outputs.needs_switzerland == 'true'
+    runs-on: self-hosted
+    steps:
+      - name: Clip canton Zürich from Geofabrik Switzerland
+        run: |
+          set -euo pipefail
+          command -v osmium >/dev/null || { sudo apt-get update && sudo apt-get install -y osmium-tool; }
+          work="${{ runner.temp }}/valhalla-switzerland-${{ github.run_id }}-${{ github.run_attempt }}"
+          mkdir -p "$work"
+          test "$(df -Pk "$work" | awk 'NR==2 {print $4}')" -ge 3145728 || { echo 'Need 3 GB free to prepare the Zürich extract' >&2; exit 1; }
+          wget -q -O "$work/switzerland.osm.pbf" https://download.geofabrik.de/europe/switzerland-latest.osm.pbf
+          osmium extract -s smart -S types=multipolygon,boundary \
+            -b 8.08,46.97,9.27,47.88 \
+            -o "$work/zurich.osm.pbf" "$work/switzerland.osm.pbf"
+          rm "$work/switzerland.osm.pbf"
+          test -s "$work/zurich.osm.pbf"
+          ls -lh "$work/zurich.osm.pbf"
+
+      - name: Upload Zürich extract
+        uses: actions/upload-artifact@v7
+        with:
+          name: swiss-canton-pbf
+          path: ${{ runner.temp }}/valhalla-switzerland-${{ github.run_id }}-${{ github.run_attempt }}/zurich.osm.pbf
+          compression-level: 0
+          if-no-files-found: error
+
+      - name: Clean up Swiss extract
+        if: always()
+        run: rm -rf "${{ runner.temp }}/valhalla-switzerland-${{ github.run_id }}-${{ github.run_attempt }}"
+
   generate_tiles:
-    needs: [select_regions, prepare_austria]
-    if: always() && needs.select_regions.result == 'success' && (needs.prepare_austria.result == 'success' || (needs.prepare_austria.result == 'skipped' && needs.select_regions.outputs.needs_austria == 'false'))
+    needs: [select_regions, prepare_austria, prepare_switzerland]
+    if: >-
+      always() && needs.select_regions.result == 'success' &&
+      (needs.prepare_austria.result == 'success' || (needs.prepare_austria.result == 'skipped' && needs.select_regions.outputs.needs_austria == 'false')) &&
+      (needs.prepare_switzerland.result == 'success' || (needs.prepare_switzerland.result == 'skipped' && needs.select_regions.outputs.needs_switzerland == 'false'))
     runs-on: self-hosted
     container:
         image: ghcr.io/valhalla/valhalla:3.6.3
@@ -128,8 +165,21 @@ jobs:
         cp austrian-city-pbfs/${{ matrix.region.name }}.osm.pbf ${{ matrix.region.name }}.osm.pbf
         test -s ${{ matrix.region.name }}.osm.pbf
 
+    - name: Download Zürich extract
+      if: matrix.region.name == 'zurich'
+      uses: actions/download-artifact@v8
+      with:
+        name: swiss-canton-pbf
+        path: swiss-canton-pbf
+
+    - name: Stage Zürich PBF
+      if: matrix.region.name == 'zurich'
+      run: |
+        cp swiss-canton-pbf/zurich.osm.pbf zurich.osm.pbf
+        test -s zurich.osm.pbf
+
     - name: Download OSM PBF for ${{ matrix.region.name }}
-      if: matrix.region.name != 'graz' && matrix.region.name != 'vienna'
+      if: matrix.region.name != 'graz' && matrix.region.name != 'vienna' && matrix.region.name != 'zurich'
       run: |
         echo "Downloading ${{ matrix.region.name }} PBF file..."
         pbf=$(basename "${{ matrix.region.url }}")
@@ -160,6 +210,7 @@ jobs:
           ile-de-france|alsace) TZID="Europe/Paris" ;;
           islas-baleares) TZID="Europe/Madrid" ;;
           graz|vienna)   TZID="Europe/Vienna" ;;
+          zurich)        TZID="Europe/Zurich" ;;
           italy-*)       TZID="Europe/Rome" ;;
           *)             TZID="Europe/Berlin" ;;
         esac
@@ -187,7 +238,7 @@ jobs:
         grep -q '"graph_lua_name": ".*graph-librescoot.lua"' valhalla.json || { echo "ERROR: graph lua not injected into config"; exit 1; }
 
         pbf=$(basename "${{ matrix.region.url }}")
-        case "${{ matrix.region.name }}" in graz|vienna) pbf="${{ matrix.region.name }}.osm.pbf" ;; esac
+        case "${{ matrix.region.name }}" in graz|vienna|zurich) pbf="${{ matrix.region.name }}.osm.pbf" ;; esac
         mkdir -p /data/valhalla
 
         echo "Building admin DB from overlay + regional PBF..."
@@ -241,11 +292,11 @@ jobs:
       if: always()
       run: |
         pbf=$(basename "${{ matrix.region.url }}")
-        case "${{ matrix.region.name }}" in graz|vienna) pbf="${{ matrix.region.name }}.osm.pbf" ;; esac
+        case "${{ matrix.region.name }}" in graz|vienna|zurich) pbf="${{ matrix.region.name }}.osm.pbf" ;; esac
         rm -f "$pbf" /tmp/artifacts/valhalla_tiles_${{ matrix.region.name }}.tar \
           /tmp/artifacts/valhalla_tiles_${{ matrix.region.name }}.tar.zst \
           /data/valhalla/valhalla_tiles_${{ matrix.region.name }}.tar
-        rm -rf austrian-city-pbfs
+        rm -rf austrian-city-pbfs swiss-canton-pbf
 
   release:
     needs: [select_regions, generate_tiles]
