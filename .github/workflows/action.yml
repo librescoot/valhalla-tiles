@@ -124,7 +124,9 @@ jobs:
 
     - name: Stage Austrian city PBF
       if: matrix.region.name == 'graz' || matrix.region.name == 'vienna'
-      run: ln -sf austrian-city-pbfs/${{ matrix.region.name }}.osm.pbf ${{ matrix.region.name }}.osm.pbf
+      run: |
+        cp austrian-city-pbfs/${{ matrix.region.name }}.osm.pbf ${{ matrix.region.name }}.osm.pbf
+        test -s ${{ matrix.region.name }}.osm.pbf
 
     - name: Download OSM PBF for ${{ matrix.region.name }}
       if: matrix.region.name != 'graz' && matrix.region.name != 'vienna'
