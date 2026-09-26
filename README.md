@@ -6,18 +6,21 @@ Part of the [Librescoot](https://librescoot.org/) open-source platform.
 
 ## Generated Files
 
-Monthly CI builds produce one `.tar` file per region. German states use per-state extracts; Benelux uses country-level extracts; France is added at region granularity (just Île-de-France for now); Italy uses Geofabrik's macro-area extracts (Nord-Ovest covers Lombardy plus Piedmont, Liguria and Aosta Valley — Geofabrik offers no per-regione extracts). Berlin and Brandenburg are combined into a single package — the Geofabrik Brandenburg extract is a superset of Berlin, so feeding both files to `valhalla_build_tiles` would produce duplicate edges.
+Monthly CI builds produce one `.tar` file per region. German states use per-state extracts; Benelux uses country-level extracts; France uses regional extracts (Île-de-France and Alsace); Mallorca is covered by the Islas Baleares extract; Graz and Vienna are clipped from Geofabrik's Austria extract to keep the published tiles small; Italy uses Geofabrik's macro-area extracts (Nord-Ovest covers Lombardy plus Piedmont, Liguria and Aosta Valley — Geofabrik offers no per-regione extracts). Berlin and Brandenburg are combined into a single package — the Geofabrik Brandenburg extract is a superset of Berlin, so feeding both files to `valhalla_build_tiles` would produce duplicate edges.
 
 | Region | Approx. Size |
 |--------|-------------|
+| `valhalla_tiles_alsace.tar` | first build pending |
 | `valhalla_tiles_baden-wuerttemberg.tar` | 485 MB |
 | `valhalla_tiles_bayern.tar` | 725 MB |
 | `valhalla_tiles_belgium.tar` | 364 MB |
 | `valhalla_tiles_berlin_brandenburg.tar` | 202 MB |
 | `valhalla_tiles_bremen.tar` | 13 MB |
 | `valhalla_tiles_hamburg.tar` | 30 MB |
+| `valhalla_tiles_graz.tar` | first build pending |
 | `valhalla_tiles_hessen.tar` | 247 MB |
 | `valhalla_tiles_ile-de-france.tar` | 167 MB |
+| `valhalla_tiles_islas-baleares.tar` | first build pending |
 | `valhalla_tiles_italy-nord-ovest.tar` | 419 MB |
 | `valhalla_tiles_luxembourg.tar` | 27 MB |
 | `valhalla_tiles_mecklenburg-vorpommern.tar` | 79 MB |
@@ -30,12 +33,13 @@ Monthly CI builds produce one `.tar` file per region. German states use per-stat
 | `valhalla_tiles_sachsen.tar` | 192 MB |
 | `valhalla_tiles_schleswig-holstein.tar` | 106 MB |
 | `valhalla_tiles_thueringen.tar` | 117 MB |
+| `valhalla_tiles_vienna.tar` | first build pending |
 
 Sizes are decimal MB from the 2026-08-09 release and vary between builds as OSM data changes.
 
 Every release also carries a `valhalla_tiles_<region>.tar.zst` next to each `.tar`, the same archive compressed with `zstd -19` (no `--long`, so the decoder window stays at 8 MB, which a 1 GB DBC appreciates). It is there to cut what a vehicle pulls over cellular: the dashboard downloads it in preference to the plain tar whenever a release offers one, and USB update mode takes it too. Either way the decompression happens on the DBC. What ends up in `/data/valhalla/tiles.tar` is always the plain seekable tar, because Valhalla mmaps it as its `tile_extract`.
 
-Admin boundaries come from a tiny `admin-overlays/west-europe.osm.pbf` (~10 KB of country-level L2 polygons for DE/FR/NL/BE/LU/IT) rather than a shared admin SQLite built from the full `germany-latest.osm.pbf`. Admin attributes are baked per-edge during `valhalla_build_tiles`, so the source admin DB isn't needed at runtime and never ships inside a regional `.tar`.
+Admin boundaries come from a tiny `admin-overlays/west-europe.osm.pbf` (~18 KB of country-level L2 polygons for DE/FR/NL/BE/LU/IT/ES/AT) rather than a shared admin SQLite built from the full `germany-latest.osm.pbf`. Admin attributes are baked per-edge during `valhalla_build_tiles`, so the source admin DB isn't needed at runtime and never ships inside a regional `.tar`.
 
 ## Installation
 
@@ -102,7 +106,7 @@ Test changes on a small region (Bremen at 13 MB, Luxembourg at 27 MB) before run
 
 ### Admin Overlay
 
-`admin-overlays/west-europe.osm.pbf` is a tiny (~10 KB) synthetic PBF carrying L2 country polygons for DE/FR/NL/BE/LU/IT with the right `ISO3166-1` codes. Passed to `valhalla_build_admins` alongside any regional PBF, it gives Valhalla the country attribution it needs without downloading the full country PBF (5 GB for Germany, 1.5 GB for France).
+`admin-overlays/west-europe.osm.pbf` is a tiny (~18 KB) synthetic PBF carrying L2 country polygons for DE/FR/NL/BE/LU/IT/ES/AT with the right `ISO3166-1` codes. Passed to `valhalla_build_admins` alongside any regional PBF, it gives Valhalla the country attribution it needs without downloading the full country PBF (5 GB for Germany, 1.5 GB for France).
 
 Regenerate via `tools/build-admin-overlay.py` (requires `osmium-tool`). Country borders move ~never, so refresh only when adding a new country or doing a clean-room verification.
 
@@ -125,10 +129,12 @@ lives in the workflow:
 | Netherlands | `Europe/Amsterdam` |
 | Belgium | `Europe/Brussels` |
 | Luxembourg | `Europe/Luxembourg` |
-| Île-de-France | `Europe/Paris` |
+| Île-de-France, Alsace | `Europe/Paris` |
+| Islas Baleares | `Europe/Madrid` |
+| Graz, Vienna | `Europe/Vienna` |
 | Italy Nord-Ovest | `Europe/Rome` |
 
-All six share the CET/CEST offset and EU DST rules, so restriction evaluation is
+All listed regions share the CET/CEST offset and EU DST rules, so restriction evaluation is
 identical across them; the distinct IANA names are kept for correctness. Adding a
 region in another zone (or one that straddles a tz boundary) means extending the
 map — or, for a straddling region, falling back to the real `valhalla_build_timezones`.
@@ -140,9 +146,9 @@ transitions (which is all restriction evaluation uses) are correct either way.
 
 ## Automated Builds
 
-GitHub Actions generates routing tiles for all 20 regions monthly on the 1st ([workflow](.github/workflows/generate-tiles.yml)). Each region runs in parallel on a self-hosted runner using the official Valhalla Docker image. Results are published as a GitHub release tagged `latest`.
+GitHub Actions generates routing tiles for all 24 regions monthly on the 1st ([workflow](.github/workflows/action.yml)). Each region runs in parallel on a self-hosted runner using the official Valhalla Docker image. Results are published as a GitHub release tagged `latest`. The Austrian city extracts are prepared once per run from the ~810 MB country PBF (about 1 GB peak disk), with a 3 GB free-space check; the source and extracts are deleted from the runner after upload. Each regional job removes its input PBF and output archives after uploading the artifact.
 
-Manual trigger: Actions → "Automatic Tile Generation and Release - Germany + Benelux + France + Italy" → Run workflow.
+Manual trigger: Actions → "Automatic Tile Generation and Release - Germany + Benelux + France + Italy + Spain + Austria" → Run workflow.
 
 ## Technical Details
 

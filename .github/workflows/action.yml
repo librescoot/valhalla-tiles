@@ -1,4 +1,4 @@
-name: Automatic Tile Generation and Release - Germany + Benelux + France + Italy
+name: Automatic Tile Generation and Release - Germany + Benelux + France + Italy + Spain + Austria
 
 permissions:
   contents: write
@@ -9,7 +9,40 @@ on:
   workflow_dispatch:
 
 jobs:
-  # Single matrix of all regional builds. Each job:
+  prepare_austria:
+    runs-on: self-hosted
+    steps:
+      - name: Clip Graz and Vienna from Geofabrik Austria
+        run: |
+          set -euo pipefail
+          command -v osmium >/dev/null || { sudo apt-get update && sudo apt-get install -y osmium-tool; }
+          work="${{ runner.temp }}/valhalla-austria-${{ github.run_id }}-${{ github.run_attempt }}"
+          mkdir -p "$work"
+          test "$(df -Pk "$work" | awk 'NR==2 {print $4}')" -ge 3145728 || { echo 'Need 3 GB free to prepare Austrian city extracts' >&2; exit 1; }
+          wget -q -O "$work/austria.osm.pbf" https://download.geofabrik.de/europe/austria-latest.osm.pbf
+          osmium extract -s smart -S types=multipolygon,boundary \
+            -b 15.15,46.90,15.70,47.25 \
+            -o "$work/graz.osm.pbf" "$work/austria.osm.pbf"
+          osmium extract -s smart -S types=multipolygon,boundary \
+            -b 16.05,48.03,16.72,48.42 \
+            -o "$work/vienna.osm.pbf" "$work/austria.osm.pbf"
+          rm "$work/austria.osm.pbf"
+          test -s "$work/graz.osm.pbf" && test -s "$work/vienna.osm.pbf"
+          ls -lh "$work"/*.osm.pbf
+
+      - name: Upload Austrian city extracts
+        uses: actions/upload-artifact@v7
+        with:
+          name: austrian-city-pbfs
+          path: ${{ runner.temp }}/valhalla-austria-${{ github.run_id }}-${{ github.run_attempt }}/*.osm.pbf
+          compression-level: 0
+          if-no-files-found: error
+
+      - name: Clean up Austrian extracts
+        if: always()
+        run: rm -rf "${{ runner.temp }}/valhalla-austria-${{ github.run_id }}-${{ github.run_attempt }}"
+
+  # Matrix of regional builds. Each job:
   #   1. Checks out the repo to pick up admin-overlays/west-europe.osm.pbf
   #   2. Downloads its regional Geofabrik PBF
   #   3. Builds admins from (overlay + regional PBF) so Valhalla has the L2
@@ -17,11 +50,12 @@ jobs:
   #      clipped to the region polygon and don't carry the country relation).
   #   4. Builds tiles, applies OpenStreetMapSpeeds defaults, packages.
   #
-  # The overlay carries hand-built L2 polygons for DE/FR/NL/BE/LU with the
+  # The overlay carries L2 polygons for DE/FR/NL/BE/LU/IT/ES/AT with the
   # right ISO3166-1 codes. See tools/build-admin-overlay.py to regenerate.
   # This replaces the previous pattern of downloading germany-latest.osm.pbf
   # (5 GB) in a separate generate_admins job and sharing via artifact.
   generate_tiles:
+    needs: prepare_austria
     runs-on: self-hosted
     container:
         image: ghcr.io/valhalla/valhalla:3.6.3
@@ -56,6 +90,10 @@ jobs:
           - { name: "belgium", url: "https://download.geofabrik.de/europe/belgium-latest.osm.pbf" }
           - { name: "luxembourg", url: "https://download.geofabrik.de/europe/luxembourg-latest.osm.pbf" }
           - { name: "ile-de-france", url: "https://download.geofabrik.de/europe/france/ile-de-france-latest.osm.pbf" }
+          - { name: "alsace", url: "https://download.geofabrik.de/europe/france/alsace-latest.osm.pbf" }
+          - { name: "islas-baleares", label: "Islas Baleares (incl. Mallorca)", url: "https://download.geofabrik.de/europe/spain/islas-baleares-latest.osm.pbf" }
+          - { name: "graz" }
+          - { name: "vienna" }
           # Geofabrik has no per-regione Italian extracts; nord-ovest is the
           # smallest extract covering Lombardy (also includes Piedmont,
           # Liguria, Aosta Valley).
@@ -68,7 +106,19 @@ jobs:
     - name: Download Dependencies
       run: apt install wget -y
 
+    - name: Download Austrian city extract
+      if: matrix.region.name == 'graz' || matrix.region.name == 'vienna'
+      uses: actions/download-artifact@v8
+      with:
+        name: austrian-city-pbfs
+        path: austrian-city-pbfs
+
+    - name: Stage Austrian city PBF
+      if: matrix.region.name == 'graz' || matrix.region.name == 'vienna'
+      run: ln -sf austrian-city-pbfs/${{ matrix.region.name }}.osm.pbf ${{ matrix.region.name }}.osm.pbf
+
     - name: Download OSM PBF for ${{ matrix.region.name }}
+      if: matrix.region.name != 'graz' && matrix.region.name != 'vienna'
       run: |
         echo "Downloading ${{ matrix.region.name }} PBF file..."
         pbf=$(basename "${{ matrix.region.url }}")
@@ -96,7 +146,9 @@ jobs:
           netherlands)   TZID="Europe/Amsterdam" ;;
           belgium)       TZID="Europe/Brussels" ;;
           luxembourg)    TZID="Europe/Luxembourg" ;;
-          ile-de-france) TZID="Europe/Paris" ;;
+          ile-de-france|alsace) TZID="Europe/Paris" ;;
+          islas-baleares) TZID="Europe/Madrid" ;;
+          graz|vienna)   TZID="Europe/Vienna" ;;
           italy-*)       TZID="Europe/Rome" ;;
           *)             TZID="Europe/Berlin" ;;
         esac
@@ -124,6 +176,7 @@ jobs:
         grep -q '"graph_lua_name": ".*graph-librescoot.lua"' valhalla.json || { echo "ERROR: graph lua not injected into config"; exit 1; }
 
         pbf=$(basename "${{ matrix.region.url }}")
+        case "${{ matrix.region.name }}" in graz|vienna) pbf="${{ matrix.region.name }}.osm.pbf" ;; esac
         mkdir -p /data/valhalla
 
         echo "Building admin DB from overlay + regional PBF..."
@@ -172,6 +225,16 @@ jobs:
         path: |
           /tmp/artifacts/valhalla_tiles_${{ matrix.region.name }}.tar
           /tmp/artifacts/valhalla_tiles_${{ matrix.region.name }}.tar.zst
+
+    - name: Free runner disk space
+      if: always()
+      run: |
+        pbf=$(basename "${{ matrix.region.url }}")
+        case "${{ matrix.region.name }}" in graz|vienna) pbf="${{ matrix.region.name }}.osm.pbf" ;; esac
+        rm -f "$pbf" /tmp/artifacts/valhalla_tiles_${{ matrix.region.name }}.tar \
+          /tmp/artifacts/valhalla_tiles_${{ matrix.region.name }}.tar.zst \
+          /data/valhalla/valhalla_tiles_${{ matrix.region.name }}.tar
+        rm -rf austrian-city-pbfs
 
   release:
     needs: [generate_tiles]
