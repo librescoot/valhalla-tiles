@@ -43,7 +43,7 @@ Admin boundaries come from a tiny `admin-overlays/west-europe.osm.pbf` (~18 KB o
 
 ## Installation
 
-Download the `.tar` for your region from the [latest release](../../releases/tag/latest) and extract it to `/data/valhalla/` on the DBC — either via USB update mode or directly via the [data-server](https://github.com/librescoot/data-server) HTTP API.
+Download the `.tar` for your region from [downloads.librescoot.org](https://downloads.librescoot.org/) and extract it to `/data/valhalla/` on the DBC — either via USB update mode or directly via the [data-server](https://github.com/librescoot/data-server) HTTP API.
 
 ```bash
 tar -xf valhalla_tiles_berlin_brandenburg.tar -C /data/valhalla/
@@ -146,9 +146,9 @@ transitions (which is all restriction evaluation uses) are correct either way.
 
 ## Automated Builds
 
-GitHub Actions generates routing tiles for all 24 regions monthly on the 1st ([workflow](.github/workflows/action.yml)). Each region runs in parallel on a self-hosted runner using the official Valhalla Docker image. Results are published as a GitHub release tagged `latest`. The Austrian city extracts are prepared once per run from the ~810 MB country PBF (about 1 GB peak disk), with a 3 GB free-space check; the source and extracts are deleted from the runner after upload. Each regional job removes its input PBF and output archives after uploading the artifact.
+GitHub Actions generates routing tiles for all 24 regions monthly on the 1st ([workflow](.github/workflows/action.yml)). Each region runs in parallel on a self-hosted runner using the official Valhalla Docker image. Results are published as immutable timestamped GitHub releases. The Austrian city extracts are prepared once per run from the ~810 MB country PBF (about 1 GB peak disk), with a 3 GB free-space check; the source and extracts are deleted from the runner after upload. Each regional job removes its input PBF and output archives after uploading the artifact.
 
-Manual trigger: Actions → "Automatic Tile Generation and Release - Germany + Benelux + France + Italy + Spain + Austria" → Run workflow. Select `new_regions` to build only Alsace, Islas Baleares (Mallorca), Graz, and Vienna. This uploads four downloadable workflow artifacts without publishing a partial release. The `all` option and monthly schedule build the full region list in `.github/regions.json`.
+Manual trigger: Actions → "Automatic Tile Generation and Release - Germany + Benelux + France + Italy + Spain + Austria" → Run workflow. Enter `all` or comma-separated region IDs such as `alsace,islas-baleares,graz,vienna`. A successful build on `main` publishes a timestamped release with only the selected regions; builds on other branches leave workflow artifacts. Monthly runs build the full list in `.github/regions.json`.
 
 ## Technical Details
 

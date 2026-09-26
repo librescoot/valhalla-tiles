@@ -8,26 +8,25 @@ on:
     - cron: '30 0 1 * *'  # Monthly on the 1st at 00:30 UTC
   workflow_dispatch:
     inputs:
-      region:
-        description: "Regions to build (partial runs upload artifacts but do not publish a release)"
+      regions:
+        description: "all or comma-separated region IDs (e.g. alsace,islas-baleares,graz,vienna)"
         required: true
-        type: choice
+        type: string
         default: all
-        options:
-          - all
-          - new_regions
 
 jobs:
   select_regions:
     runs-on: ubuntu-latest
     outputs:
       regions: ${{ steps.choose.outputs.regions }}
+      count: ${{ steps.choose.outputs.count }}
+      needs_austria: ${{ steps.choose.outputs.needs_austria }}
     steps:
       - uses: actions/checkout@v4
       - name: Select regions for this run
         id: choose
         env:
-          REGION_SET: ${{ inputs.region || 'all' }}
+          REGION_SET: ${{ inputs.regions || 'all' }}
         run: |
           python3 - <<'PY' >> "$GITHUB_OUTPUT"
           import json
@@ -35,18 +34,23 @@ jobs:
 
           with open('.github/regions.json') as f:
               regions = json.load(f)
-          selection = os.environ['REGION_SET']
-          if selection == 'new_regions':
-              names = {'alsace', 'islas-baleares', 'graz', 'vienna'}
-              regions = [r for r in regions if r['name'] in names]
-              if {r['name'] for r in regions} != names:
-                  raise SystemExit('Missing a new region in .github/regions.json')
-          elif selection != 'all':
-              raise SystemExit(f'Unknown region selection: {selection}')
+          selection = os.environ['REGION_SET'].strip()
+          if selection != 'all':
+              names = [name.strip() for name in selection.split(',')]
+              available = {region['name']: region for region in regions}
+              if not names or any(name not in available for name in names):
+                  raise SystemExit(f'Unknown or empty region in: {selection}')
+              if len(names) != len(set(names)):
+                  raise SystemExit(f'Duplicate region in: {selection}')
+              regions = [available[name] for name in names]
           print('regions=' + json.dumps(regions, separators=(',', ':')))
+          print('count=' + str(len(regions)))
+          print('needs_austria=' + str(any(r['name'] in ('graz', 'vienna') for r in regions)).lower())
           PY
 
   prepare_austria:
+    needs: select_regions
+    if: needs.select_regions.outputs.needs_austria == 'true'
     runs-on: self-hosted
     steps:
       - name: Clip Graz and Vienna from Geofabrik Austria
@@ -93,6 +97,7 @@ jobs:
   # (5 GB) in a separate generate_admins job and sharing via artifact.
   generate_tiles:
     needs: [select_regions, prepare_austria]
+    if: always() && needs.select_regions.result == 'success' && (needs.prepare_austria.result == 'success' || (needs.prepare_austria.result == 'skipped' && needs.select_regions.outputs.needs_austria == 'false'))
     runs-on: self-hosted
     container:
         image: ghcr.io/valhalla/valhalla:3.6.3
@@ -241,10 +246,9 @@ jobs:
         rm -rf austrian-city-pbfs
 
   release:
-    needs: [generate_tiles]
+    needs: [select_regions, generate_tiles]
     runs-on: ubuntu-latest
-    # Publish only complete runs from main; partial builds remain workflow artifacts.
-    if: github.ref == 'refs/heads/main' && (github.event_name != 'workflow_dispatch' || inputs.region == 'all')
+    if: github.ref == 'refs/heads/main' && needs.generate_tiles.result == 'success'
     steps:
       - name: Download tile artifacts
         uses: actions/download-artifact@v8
@@ -257,16 +261,56 @@ jobs:
           echo "Listing all downloaded artifacts:"
           find artifacts \( -name "*.tar" -o -name "*.tar.zst" \) -type f
 
+      - name: Name the release
+        id: publish
+        run: |
+          set -euo pipefail
+          tag="tiles-$(date -u +%Y%m%dT%H%M%SZ)"
+          count=$(find artifacts -name '*.tar' -type f | wc -l)
+          if [ "$count" -ne "${{ needs.select_regions.outputs.count }}" ]; then
+            echo "expected ${{ needs.select_regions.outputs.count }} routing archives, got $count" >&2
+            exit 1
+          fi
+          compressed=$(find artifacts -name '*.tar.zst' -type f | wc -l)
+          test "$compressed" -eq "$count"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
       - name: Create Automatic Release
         uses: softprops/action-gh-release@v3
         with:
-          tag_name: latest
-          name: "Valhalla Tiles - Germany + Benelux + France + Italy"
+          tag_name: ${{ steps.publish.outputs.tag }}
+          name: "Valhalla Tiles - ${{ steps.publish.outputs.tag }}"
           prerelease: false
-          make_latest: true
           files: |
             artifacts/**/*.tar
             artifacts/**/*.tar.zst
+          fail_on_unmatched_files: true
+
+      - name: Prune superseded releases
+        continue-on-error: true
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const releases = await github.paginate(github.rest.repos.listReleases, {
+              owner: context.repo.owner, repo: context.repo.repo, per_page: 100,
+            });
+            const kept = new Map();
+            for (const release of releases.filter(r => r.tag_name.startsWith('tiles-') || r.tag_name === 'latest')
+              .sort((a, b) => new Date(b.published_at) - new Date(a.published_at))) {
+              const regions = [...new Set(release.assets.map(a =>
+                /^valhalla_tiles_(.+)\.tar$/.exec(a.name)?.[1]).filter(Boolean))];
+              if (release.tag_name === 'latest' || regions.some(region => (kept.get(region) ?? 0) < 3)) {
+                for (const region of regions) kept.set(region, (kept.get(region) ?? 0) + 1);
+                continue;
+              }
+              await github.rest.repos.deleteRelease({
+                owner: context.repo.owner, repo: context.repo.repo, release_id: release.id,
+              });
+              await github.rest.git.deleteRef({
+                owner: context.repo.owner, repo: context.repo.repo,
+                ref: `tags/${release.tag_name}`,
+              });
+            }
 
       - name: Generate app token for downloads rebuild
         id: app-token
