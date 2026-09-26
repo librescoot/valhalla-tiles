@@ -301,7 +301,7 @@ jobs:
   release:
     needs: [select_regions, generate_tiles]
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' && needs.generate_tiles.result == 'success'
+    if: always() && github.ref == 'refs/heads/main' && needs.generate_tiles.result == 'success'
     steps:
       - name: Download tile artifacts
         uses: actions/download-artifact@v8
