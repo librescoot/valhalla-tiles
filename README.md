@@ -148,7 +148,7 @@ transitions (which is all restriction evaluation uses) are correct either way.
 
 GitHub Actions generates routing tiles for all 24 regions monthly on the 1st ([workflow](.github/workflows/action.yml)). Each region runs in parallel on a self-hosted runner using the official Valhalla Docker image. Results are published as a GitHub release tagged `latest`. The Austrian city extracts are prepared once per run from the ~810 MB country PBF (about 1 GB peak disk), with a 3 GB free-space check; the source and extracts are deleted from the runner after upload. Each regional job removes its input PBF and output archives after uploading the artifact.
 
-Manual trigger: Actions → "Automatic Tile Generation and Release - Germany + Benelux + France + Italy + Spain + Austria" → Run workflow.
+Manual trigger: Actions → "Automatic Tile Generation and Release - Germany + Benelux + France + Italy + Spain + Austria" → Run workflow. Select `new_regions` to build only Alsace, Islas Baleares (Mallorca), Graz, and Vienna. This uploads four downloadable workflow artifacts without publishing a partial release. The `all` option and monthly schedule build the full region list in `.github/regions.json`.
 
 ## Technical Details
 
