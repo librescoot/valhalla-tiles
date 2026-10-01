@@ -60,7 +60,7 @@ zstd -d valhalla_tiles_berlin_brandenburg.tar.zst
 
 ```bash
 # Download a regional OSM extract
-wget https://download.geofabrik.de/europe/germany/brandenburg-latest.osm.pbf
+bash download-pbf.sh https://download.geofabrik.de/europe/germany/brandenburg-latest.osm.pbf brandenburg-latest.osm.pbf
 
 # Fetch community speed data
 wget https://raw.githubusercontent.com/OpenStreetMapSpeeds/schema/master/default_speeds.json
@@ -148,6 +148,8 @@ transitions (which is all restriction evaluation uses) are correct either way.
 ## Automated Builds
 
 GitHub Actions generates routing tiles for all 24 regions monthly on the 1st ([workflow](.github/workflows/action.yml)). Each region runs in parallel on a self-hosted runner using the official Valhalla Docker image. Results are published as immutable timestamped GitHub releases. The Austrian city extracts are prepared once per run from the ~810 MB country PBF (about 1 GB peak disk), with a 3 GB free-space check; the source and extracts are deleted from the runner after upload. Each regional job removes its input PBF and output archives after uploading the artifact.
+
+PBF downloads require `curl` and GNU `date`. They log errors and retry up to three times. If a Geofabrik `latest` URL fails, the downloader tries the previous UTC day's dated extract without falling back to older data. Downloads are staged in temporary files and renamed only after a successful, nonempty response.
 
 Manual trigger: Actions → "Automatic Tile Generation and Release - Germany + Benelux + France + Italy + Spain + Austria" → Run workflow. Enter `all` or comma-separated region IDs such as `alsace,islas-baleares,graz,vienna`. A successful build on `main` publishes a timestamped release with only the selected regions; builds on other branches leave workflow artifacts. Monthly runs build the full list in `.github/regions.json`.
 

@@ -55,6 +55,7 @@ jobs:
     if: needs.select_regions.outputs.needs_austria == 'true'
     runs-on: self-hosted
     steps:
+      - uses: actions/checkout@v7
       - name: Clip Graz and Vienna from Geofabrik Austria
         run: |
           set -euo pipefail
@@ -62,7 +63,7 @@ jobs:
           work="${{ runner.temp }}/valhalla-austria-${{ github.run_id }}-${{ github.run_attempt }}"
           mkdir -p "$work"
           test "$(df -Pk "$work" | awk 'NR==2 {print $4}')" -ge 3145728 || { echo 'Need 3 GB free to prepare Austrian city extracts' >&2; exit 1; }
-          wget -q -O "$work/austria.osm.pbf" https://download.geofabrik.de/europe/austria-latest.osm.pbf
+          bash download-pbf.sh https://download.geofabrik.de/europe/austria-latest.osm.pbf "$work/austria.osm.pbf"
           osmium extract -s smart -S types=multipolygon,boundary \
             -b 15.15,46.90,15.70,47.25 \
             -o "$work/graz.osm.pbf" "$work/austria.osm.pbf"
@@ -102,6 +103,7 @@ jobs:
     if: needs.select_regions.outputs.needs_switzerland == 'true'
     runs-on: self-hosted
     steps:
+      - uses: actions/checkout@v7
       - name: Clip canton Zürich from Geofabrik Switzerland
         run: |
           set -euo pipefail
@@ -109,7 +111,7 @@ jobs:
           work="${{ runner.temp }}/valhalla-switzerland-${{ github.run_id }}-${{ github.run_attempt }}"
           mkdir -p "$work"
           test "$(df -Pk "$work" | awk 'NR==2 {print $4}')" -ge 3145728 || { echo 'Need 3 GB free to prepare the Zürich extract' >&2; exit 1; }
-          wget -q -O "$work/switzerland.osm.pbf" https://download.geofabrik.de/europe/switzerland-latest.osm.pbf
+          bash download-pbf.sh https://download.geofabrik.de/europe/switzerland-latest.osm.pbf "$work/switzerland.osm.pbf"
           osmium extract -s smart -S types=multipolygon,boundary \
             -b 8.08,46.97,9.27,47.88 \
             -o "$work/zurich.osm.pbf" "$work/switzerland.osm.pbf"
@@ -150,7 +152,7 @@ jobs:
       uses: actions/checkout@v7
 
     - name: Download Dependencies
-      run: apt install wget -y
+      run: apt install wget curl -y
 
     - name: Download Austrian city extract
       if: matrix.region.name == 'graz' || matrix.region.name == 'vienna'
@@ -183,7 +185,7 @@ jobs:
       run: |
         echo "Downloading ${{ matrix.region.name }} PBF file..."
         pbf=$(basename "${{ matrix.region.url }}")
-        wget -q -O "$pbf" "${{ matrix.region.url }}"
+        bash download-pbf.sh "${{ matrix.region.url }}" "$pbf"
         echo "Download completed for ${{ matrix.region.name }}"
         ls -la *.osm.pbf
 
