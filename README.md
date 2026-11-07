@@ -38,6 +38,15 @@ Monthly CI builds produce one `.tar` file per region. German states use per-stat
 
 Sizes are decimal MB from the 2026-08-09 release and vary between builds as OSM data changes.
 
+Each region's data version is its immutable `tiles-<UTC timestamp>` release tag;
+its SHA-256 identifies the exact uncompressed routing archive. When a verified
+previous regional archive is available, the release also includes
+`valhalla_tiles_<region>.from-<base-version>.hdelta` if it is smaller than the
+compressed full archive. The downloads index identifies the base and target
+versions and hashes. A compatible dashboard verifies the installed base, delta,
+and reconstructed target before replacing the archive; otherwise it downloads
+the full archive.
+
 Every release also carries a `valhalla_tiles_<region>.tar.zst` next to each `.tar`, the same archive compressed with `zstd -19` (no `--long`, so the decoder window stays at 8 MB, which a 1 GB DBC appreciates). It is there to cut what a vehicle pulls over cellular: the dashboard downloads it in preference to the plain tar whenever a release offers one, and USB update mode takes it too. Either way the decompression happens on the DBC. What ends up in `/data/valhalla/tiles.tar` is always the plain seekable tar, because Valhalla mmaps it as its `tile_extract`.
 
 Admin boundaries come from a tiny `admin-overlays/west-europe.osm.pbf` (~19 KB of country-level L2 polygons for DE/FR/NL/BE/LU/IT/ES/AT/CH) rather than a shared admin SQLite built from the full `germany-latest.osm.pbf`. Admin attributes are baked per-edge during `valhalla_build_tiles`, so the source admin DB isn't needed at runtime and never ships inside a regional `.tar`.
