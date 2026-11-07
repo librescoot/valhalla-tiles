@@ -40,8 +40,9 @@ Sizes are decimal MB from the 2026-08-09 release and vary between builds as OSM 
 
 Each region's data version is its immutable `tiles-<UTC timestamp>` release tag;
 its SHA-256 identifies the exact uncompressed routing archive. When a verified
-previous regional archive is available, the release also includes
-`valhalla_tiles_<region>.from-<base-version>.hdelta` if it is smaller than the
+previous regional archives are available, the release also includes patches for
+up to three distinct recent bases. Each is named
+`valhalla_tiles_<region>.from-<base-version>.hdelta` and is kept if it is smaller than the
 compressed full archive. The downloads index identifies the base and target
 versions and hashes. A compatible dashboard verifies the installed base, delta,
 and reconstructed target before replacing the archive; otherwise it downloads

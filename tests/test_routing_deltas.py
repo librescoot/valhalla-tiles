@@ -30,8 +30,18 @@ class RoutingDeltasTest(unittest.TestCase):
                     release('tiles-20261102T000000Z', '2026-11-02', b, draft=True),
                     release('latest', '2026-11-03', b)]
         bases = mod.bases(releases)
-        self.assertEqual(bases['bremen'][0], 'tiles-20261101T000000Z')
-        self.assertEqual(bases['berlin_brandenburg'][0], 'tiles-20261001T000000Z')
+        self.assertEqual(bases['bremen'][0][0], 'tiles-20261101T000000Z')
+        self.assertEqual(bases['berlin_brandenburg'][0][0], 'tiles-20261001T000000Z')
+
+    def test_three_distinct_bases_in_newest_first_order(self):
+        releases = []
+        for n in range(1, 6):
+            a = asset('valhalla_tiles_bremen.tar')
+            a['digest'] = 'sha256:' + str(n) * 64
+            releases.append(release(f'tiles-2026110{n}T000000Z', f'2026-11-0{n}', a))
+        releases.append(release('tiles-20261106T000000Z', '2026-11-06', releases[-1]['assets'][0]))
+        self.assertEqual([tag for tag, _ in mod.bases(releases)['bremen']],
+                         ['tiles-20261106T000000Z', 'tiles-20261104T000000Z', 'tiles-20261103T000000Z'])
 
     def test_unknown_digest_is_not_a_delta_base(self):
         r = release('tiles-20261101T000000Z', '2026-11-01',
